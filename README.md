@@ -29,7 +29,7 @@ samples, guidance on mobile development, and a full API reference.
 ## 📌 Project Description
 
 ### What
-**MushScan** adalah aplikasi mobile Android berbasis Machine Learning
+**Tiram Sehat** adalah aplikasi mobile Android berbasis Machine Learning
 (Computer Vision) yang dirancang untuk mendeteksi kondisi baglog jamur tiram,
 khususnya membedakan baglog **Sehat** dan **Terkontaminasi** melalui kamera
 smartphone.
