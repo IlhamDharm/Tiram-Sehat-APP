@@ -15,3 +15,13 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## 👥 Team
+
+| No. | Name | Student ID |
+|:---:|---|:---:|
+| 1 | Achmad Nabil Afgareza | 244107020001 |
+| 2 | Amin Aziz Sudjud | 244107020079 |
+| 3 | Aryan Zuda Firdaus | 244107020060 |
+| 4 | Fazel Priyono | 244107020033 |
+| 5 | Ilham Dharma Atmaja | 244107020220 |
