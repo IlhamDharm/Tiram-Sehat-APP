@@ -56,7 +56,7 @@ Project Based Learning (PBL) Program Studi Sarjana Terapan Teknik Informatika,
 Politeknik Negeri Malang, Tahun Akademik 2026/2027.
 
 ### How
-MushScan menggunakan **Computer Vision** dengan model CNN/MobileNet yang
+Tiram Sehat menggunakan **Computer Vision** dengan model CNN/MobileNet yang
 dikonversi ke **TensorFlow Lite** dan dijalankan secara **on-device** pada
 smartphone. Pengguna dapat mengambil gambar baglog melalui kamera atau
 mengunggah gambar dari galeri. Sistem kemudian melakukan klasifikasi dan
