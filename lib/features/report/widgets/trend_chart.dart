@@ -5,20 +5,29 @@ import '../../../core/theme/tokens.dart';
 class TrendChart extends StatelessWidget {
   final List<double> values;
   final List<String> labels;
+  final String? unit;
+  final String Function(double)? valueFormatter;
 
   const TrendChart({
     super.key,
     required this.values,
     required this.labels,
+    this.unit,
+    this.valueFormatter,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 120,
+      height: 125,
       width: double.infinity,
       child: CustomPaint(
-        painter: _TrendChartPainter(values: values, labels: labels),
+        painter: _TrendChartPainter(
+          values: values,
+          labels: labels,
+          unit: unit,
+          valueFormatter: valueFormatter,
+        ),
       ),
     );
   }
@@ -27,17 +36,24 @@ class TrendChart extends StatelessWidget {
 class _TrendChartPainter extends CustomPainter {
   final List<double> values;
   final List<String> labels;
+  final String? unit;
+  final String Function(double)? valueFormatter;
 
-  _TrendChartPainter({required this.values, required this.labels});
+  _TrendChartPainter({
+    required this.values,
+    required this.labels,
+    this.unit,
+    this.valueFormatter,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (values.isEmpty) return;
 
-    const leftPadding = 18.0;
+    const leftPadding = 20.0;
     const rightPadding = 24.0;
-    const topPadding = 18.0;
-    const bottomPadding = 32.0;
+    const topPadding = 22.0;
+    const bottomPadding = 26.0;
 
     final chartWidth = size.width - leftPadding - rightPadding;
     final chartHeight = size.height - topPadding - bottomPadding;
@@ -57,15 +73,23 @@ class _TrendChartPainter extends CustomPainter {
       );
     }
 
-    // Min and max for scaling
-    // Values: 82, 85, 88, 89.4
-    const minY = 78.0;
-    const maxY = 92.0;
+    // Dynamic min and max for scaling
+    double minVal = values.reduce((a, b) => a < b ? a : b);
+    double maxVal = values.reduce((a, b) => a > b ? a : b);
+    if (minVal == maxVal) {
+      minVal = (minVal * 0.8).clamp(0.0, double.infinity);
+      maxVal = maxVal > 0 ? maxVal * 1.2 : 10.0;
+    }
+    final range = maxVal - minVal;
+    final minY = (minVal - range * 0.25).clamp(0.0, double.infinity);
+    final maxY = maxVal + range * 0.25;
 
     final points = <Offset>[];
     for (int i = 0; i < values.length; i++) {
-      final x = leftPadding + (chartWidth / (values.length - 1)) * i;
-      final normalizedY = (values[i] - minY) / (maxY - minY);
+      final x = values.length == 1
+          ? leftPadding + chartWidth / 2
+          : leftPadding + (chartWidth / (values.length - 1)) * i;
+      final normalizedY = (maxY == minY) ? 0.5 : (values[i] - minY) / (maxY - minY);
       final y = topPadding + chartHeight * (1.0 - normalizedY);
       points.add(Offset(x, y));
     }
@@ -97,7 +121,7 @@ class _TrendChartPainter extends CustomPainter {
     // Line stroke path
     final linePaint = Paint()
       ..color = AppColors.primary600
-      ..strokeWidth = 3.2
+      ..strokeWidth = 3.0
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
@@ -109,51 +133,80 @@ class _TrendChartPainter extends CustomPainter {
     }
     canvas.drawPath(linePath, linePaint);
 
-    // Draw dots and text labels
+    // Cari titik tertinggi
+    int maxIndex = 0;
+    for (int i = 1; i < values.length; i++) {
+      if (values[i] >= values[maxIndex]) maxIndex = i;
+    }
+
+    // Gambar titik dan label
     for (int i = 0; i < points.length; i++) {
       final pt = points[i];
       final isLast = i == points.length - 1;
+      final isMax = i == maxIndex;
+      final isHighlighted = isLast || (isMax && values.length <= 7);
 
-      // Draw point dot
+      // Gambar titik lingkaran
       final dotBgPaint = Paint()
-        ..color = isLast ? AppColors.primary800 : AppColors.surface
+        ..color = isHighlighted ? AppColors.primary800 : AppColors.surface
         ..style = PaintingStyle.fill;
       final dotBorderPaint = Paint()
-        ..color = isLast ? AppColors.primary400 : AppColors.primary600
-        ..strokeWidth = isLast ? 3.0 : 2.5
+        ..color = isHighlighted ? AppColors.primary400 : AppColors.primary600
+        ..strokeWidth = isHighlighted ? 2.8 : 2.2
         ..style = PaintingStyle.stroke;
 
-      canvas.drawCircle(pt, isLast ? 6.5 : 4.5, dotBgPaint);
-      canvas.drawCircle(pt, isLast ? 6.5 : 4.5, dotBorderPaint);
+      canvas.drawCircle(pt, isHighlighted ? 5.5 : 4.0, dotBgPaint);
+      canvas.drawCircle(pt, isHighlighted ? 5.5 : 4.0, dotBorderPaint);
 
-      // Label below dot or point
-      final labelText = labels[i];
-      final textSpan = TextSpan(
-        text: labelText,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 11,
-          fontWeight: isLast ? FontWeight.w700 : FontWeight.w500,
-          color: isLast ? AppColors.primary800 : AppColors.textSecondary,
-        ),
-      );
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
+      // Label nilai di atas titik
+      if (isHighlighted && values[i] > 0) {
+        final valText = valueFormatter != null
+            ? valueFormatter!(values[i])
+            : (unit != null
+                ? '${values[i].toStringAsFixed(1).replaceAll('.', ',')} $unit'
+                : values[i].toStringAsFixed(1).replaceAll('.', ','));
 
-      // Position text
-      double labelY;
-      if (isLast) {
-        // Show 89,4% above or near last point
-        labelY = pt.dy - 20;
-      } else {
-        labelY = pt.dy + 10;
+        final valSpan = TextSpan(
+          text: valText,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary800,
+          ),
+        );
+        final valPainter = TextPainter(
+          text: valSpan,
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        final labelX = (pt.dx - (valPainter.width / 2))
+            .clamp(4.0, size.width - valPainter.width - 4.0);
+        valPainter.paint(canvas, Offset(labelX, pt.dy - 17));
       }
-      textPainter.paint(
-        canvas,
-        Offset(pt.dx - (textPainter.width / 2), labelY),
-      );
+
+      // Label sumbu X di bagian bawah
+      if (i < labels.length) {
+        final labelText = labels[i];
+        final textSpan = TextSpan(
+          text: labelText,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10.5,
+            fontWeight: isHighlighted ? FontWeight.w700 : FontWeight.w500,
+            color: isHighlighted ? AppColors.primary800 : AppColors.textSecondary,
+          ),
+        );
+        final textPainter = TextPainter(
+          text: textSpan,
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        final labelX = (pt.dx - (textPainter.width / 2))
+            .clamp(2.0, size.width - textPainter.width - 2.0);
+        textPainter.paint(
+          canvas,
+          Offset(labelX, size.height - bottomPadding + 6),
+        );
+      }
     }
   }
 

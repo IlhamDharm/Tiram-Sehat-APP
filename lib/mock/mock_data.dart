@@ -1,17 +1,26 @@
+import '../core/format/format_helper.dart';
+
 class HarvestEntry {
-  final String date;
+  final String id;
+  final DateTime dateTime;
   final double weightKg;
   final int pricePerKg;
   final int grossIncome;
   final String? note;
+  final String? customDate;
 
-  const HarvestEntry({
-    required this.date,
+  HarvestEntry({
+    String? id,
+    required this.dateTime,
     required this.weightKg,
     required this.pricePerKg,
-    required this.grossIncome,
+    int? grossIncome,
     this.note,
-  });
+    this.customDate,
+  })  : id = id ?? '${dateTime.millisecondsSinceEpoch}_$weightKg',
+        grossIncome = grossIncome ?? (weightKg * pricePerKg).round();
+
+  String get date => customDate ?? FormatHelper.dateTimeLong(dateTime);
 }
 
 class BaglogCycle {
@@ -115,8 +124,9 @@ class HistoryItem {
 }
 
 class MockData {
-  static const harvestLast = HarvestEntry(
-    date: 'Kamis, 24 Okt 2024 - 07:30 WIB',
+  static final harvestLast = HarvestEntry(
+    dateTime: DateTime(2024, 10, 24, 7, 30),
+    customDate: 'Kamis, 24 Okt 2024 - 07:30 WIB',
     weightKg: 18.5,
     pricePerKg: 15000,
     grossIncome: 277500,
