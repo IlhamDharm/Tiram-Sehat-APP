@@ -94,6 +94,7 @@ async def root():
 
 # 5. Endpoint Upload Scan (Cloudinary) & Simpan Metadata (Neon DB)
 @app.post("/api/scan")
+@app.post("/api/scans")
 async def scan_mushroom(
     file: UploadFile = File(...),
     rack: str = Form("Rak Kumbung B-04"),
@@ -106,10 +107,17 @@ async def scan_mushroom(
     notes: str = Form(None)
 ):
     # Validasi format file
-    print(f"[SCAN] Request received: filename={file.filename}, content_type={file.content_type}, size={file.size}")
-    if not file.content_type or not file.content_type.startswith("image/"):
-        print(f"[SCAN] REJECTED: content_type={file.content_type}")
-        raise HTTPException(status_code=400, detail=f"File harus berupa gambar! Got: {file.content_type}")
+    content_type = file.content_type or ""
+    filename = file.filename or "scan.jpg"
+    file_size = getattr(file, "size", None)
+    print(f"[SCAN] Request received: filename={filename}, content_type={content_type}, size={file_size}")
+
+    is_image = content_type.startswith("image/") or any(
+        filename.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
+    )
+    if not is_image:
+        print(f"[SCAN] REJECTED: content_type={content_type}, filename={filename}")
+        raise HTTPException(status_code=400, detail=f"File harus berupa gambar! Got: {content_type}")
 
     try:
         # A. Unggah Gambar ke Cloudinary (folder 'img_jamur')
@@ -121,7 +129,9 @@ async def scan_mushroom(
             folder="img_jamur",
             resource_type="image"
         )
-        image_url = upload_result.get("secure_url")
+        image_url = upload_result.get("secure_url") or upload_result.get("url")
+        if not image_url:
+            raise Exception("Cloudinary tidak mengembalikan URL gambar yang valid")
         print(f"[SCAN] Cloudinary upload OK: {image_url}")
 
         # B. Metadata Hasil Diagnosa Baglog

@@ -316,17 +316,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
     ref.read(historyListProvider.notifier).addScanResult(finalResult);
 
     if (mounted) {
+      final bool isCloudSaved =
+          finalResult.imageUrl != null && finalResult.imageUrl!.isNotEmpty;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+              Icon(
+                isCloudSaved ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                color: isCloudSaved ? AppColors.primary400 : Colors.amberAccent,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  finalResult.imageUrl != null
+                  isCloudSaved
                       ? 'Hasil scan disimpan ke Neon DB & Cloudinary (img_jamur)'
-                      : 'Hasil scan disimpan ke riwayat lokal',
+                      : 'Backend offline (port 8000). Hasil scan tersimpan di riwayat lokal',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -335,12 +341,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
               ),
             ],
           ),
-          backgroundColor: AppColors.primary800,
+          backgroundColor:
+              isCloudSaved ? AppColors.primary800 : const Color(0xFF5D2E14),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
     }

@@ -23,8 +23,9 @@ class ScanApiService {
 
   List<String> get _candidateUrls {
     if (defaultTargetPlatform == TargetPlatform.android) {
-      final set = <String>{baseUrl, 'http://127.0.0.1:8000', 'http://10.0.2.2:8000'};
-      return set.toList();
+      // Pada Android, utamakan baseUrl aktif, lalu 127.0.0.1 (via adb reverse), dan fallback 10.0.2.2
+      final list = <String>[baseUrl, 'http://127.0.0.1:8000', 'http://10.0.2.2:8000'];
+      return list.toSet().toList();
     }
     return [baseUrl];
   }
@@ -43,6 +44,7 @@ class ScanApiService {
     String? notes,
   }) async {
     final candidates = _candidateUrls;
+    Exception? lastError;
 
     for (int i = 0; i < candidates.length; i++) {
       final currentBase = candidates[i];
@@ -78,15 +80,15 @@ class ScanApiService {
 
         debugPrint('ScanApiService: Sending ${bytes.length} bytes as image/jpeg...');
         final streamedResponse = await request.send().timeout(
-              const Duration(seconds: 30),
+              const Duration(seconds: 10),
             );
         final response = await http.Response.fromStream(streamedResponse);
 
         if (response.statusCode >= 200 && response.statusCode < 300) {
           final decoded = jsonDecode(response.body) as Map<String, dynamic>;
           final data = decoded['data'] as Map<String, dynamic>;
-          debugPrint('ScanApiService: Scan uploaded successfully. ID: ${data['id']}');
-          baseUrl = currentBase; // Simpan URL aktif
+          debugPrint('ScanApiService: Scan uploaded successfully. ID: ${data['id']}, URL: ${data['image_url']}');
+          baseUrl = currentBase; // Simpan URL aktif agar request berikutnya langsung ke host ini
           return _mapJsonToScanResult(data);
         } else {
           throw Exception(
@@ -95,11 +97,11 @@ class ScanApiService {
         }
       } catch (e) {
         debugPrint('ScanApiService: upload to $currentBase failed: $e');
-        if (i == candidates.length - 1) rethrow;
+        lastError = e is Exception ? e : Exception(e.toString());
       }
     }
 
-    throw Exception('Semua koneksi backend gagal');
+    throw lastError ?? Exception('Semua koneksi backend gagal dihubungi');
   }
 
   /// Mengambil seluruh riwayat hasil pemindaian dari database Neon DB.
