@@ -68,6 +68,7 @@ class ScanResult {
   final String rack;
   final int column;
   final String scannedAt;
+  final String? imageUrl;
 
   const ScanResult({
     required this.id,
@@ -80,6 +81,7 @@ class ScanResult {
     required this.rack,
     required this.column,
     required this.scannedAt,
+    this.imageUrl,
   });
 }
 
@@ -103,6 +105,7 @@ class HistoryItem {
   final String? note;
   final String? actionLabel;
   final bool isInitiallyExpanded;
+  final String? imageUrl;
 
   const HistoryItem({
     required this.id,
@@ -118,6 +121,7 @@ class HistoryItem {
     this.note,
     this.actionLabel,
     this.isInitiallyExpanded = false,
+    this.imageUrl,
   });
 
   String get rackLocation => '$rack • Kolom $col';

@@ -237,7 +237,7 @@ class _VisualComparison extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.s3),
-        const Row(
+        Row(
           children: [
             Expanded(
               child: _ComparisonCard(
@@ -246,10 +246,11 @@ class _VisualComparison extends StatelessWidget {
                 subtitle: 'Diameter 1,8 cm aktif',
                 tone: StatusTone.warning,
                 spore: true,
+                imageUrl: result.imageUrl,
               ),
             ),
-            SizedBox(width: AppSpacing.s3),
-            Expanded(
+            const SizedBox(width: AppSpacing.s3),
+            const Expanded(
               child: _ComparisonCard(
                 label: 'Miselium Sehat',
                 title: 'Target Normal',
@@ -271,6 +272,7 @@ class _ComparisonCard extends StatelessWidget {
   final String subtitle;
   final StatusTone tone;
   final bool spore;
+  final String? imageUrl;
 
   const _ComparisonCard({
     required this.label,
@@ -278,6 +280,7 @@ class _ComparisonCard extends StatelessWidget {
     required this.subtitle,
     required this.tone,
     required this.spore,
+    this.imageUrl,
   });
 
   Color get _accent =>
@@ -300,7 +303,15 @@ class _ComparisonCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  CustomPaint(painter: _SamplePainter(spore: spore)),
+                  if (imageUrl != null && imageUrl!.isNotEmpty && spore)
+                    Image.network(
+                      imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          CustomPaint(painter: _SamplePainter(spore: spore)),
+                    )
+                  else
+                    CustomPaint(painter: _SamplePainter(spore: spore)),
                   Positioned(
                     left: AppSpacing.s2,
                     bottom: AppSpacing.s2,

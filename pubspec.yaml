@@ -16,6 +16,8 @@ dependencies:
   flutter_riverpod: ^2.6.1
   camera: ^0.12.1
   image_picker: ^1.2.4
+  http: ^1.2.2
+  http_parser: ^4.1.0
 
 dev_dependencies:
   flutter_test:
