@@ -251,7 +251,7 @@ class ScanApiService {
         ];
         final hour = dt.hour.toString().padLeft(2, '0');
         final min = dt.minute.toString().padLeft(2, '0');
-        whenStr = '${dt.day} ${months[dt.month - 1]}, $hour:$min';
+        whenStr = '${dt.day} ${months[dt.month - 1]}, $hour:$min WIB';
       } catch (_) {
         whenStr = createdAt;
       }

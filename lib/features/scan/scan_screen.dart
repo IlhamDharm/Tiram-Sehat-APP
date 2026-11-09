@@ -39,6 +39,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   Uint8List? _capturedBytes;
   ScanResult? _scanResult;
+  bool _isSavingHistory = false;
 
   ScanPhase _phase = ScanPhase.viewfinder;
 
@@ -290,11 +291,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
     setState(() {
       _capturedBytes = null;
       _scanResult = null;
+      _isSavingHistory = false;
       _phase = ScanPhase.viewfinder;
     });
   }
 
   Future<void> _handleSaveToHistory(ScanResult activeResult) async {
+    if (_isSavingHistory) return;
+    _isSavingHistory = true;
+
     var finalResult = activeResult;
 
     // Jika belum tersimpan ke server tapi ada data gambar, lakukan upload sekarang

@@ -9,7 +9,7 @@ import '../../../core/components/action_button.dart';
 import '../../../core/format/format_helper.dart';
 import '../../../mock/mock_data.dart';
 
-class ScanResultSheetContent extends StatelessWidget {
+class ScanResultSheetContent extends StatefulWidget {
   final ScanResult result;
   final VoidCallback onSaveToHistory;
   final VoidCallback onScanAgain;
@@ -20,6 +20,21 @@ class ScanResultSheetContent extends StatelessWidget {
     required this.onSaveToHistory,
     required this.onScanAgain,
   });
+
+  @override
+  State<ScanResultSheetContent> createState() => _ScanResultSheetContentState();
+}
+
+class _ScanResultSheetContentState extends State<ScanResultSheetContent> {
+  bool _isSaved = false;
+
+  void _handleSave() {
+    if (_isSaved) return;
+    setState(() {
+      _isSaved = true;
+    });
+    widget.onSaveToHistory();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,20 +48,20 @@ class ScanResultSheetContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DiagnosisHeader(result: result),
+          _DiagnosisHeader(result: widget.result),
           const SizedBox(height: AppSpacing.s4),
-          _ConfidenceCard(result: result),
+          _ConfidenceCard(result: widget.result),
           const SizedBox(height: AppSpacing.sectionGap),
-          _VisualComparison(result: result),
+          _VisualComparison(result: widget.result),
           const SizedBox(height: AppSpacing.sectionGap),
-          _MitigationCard(result: result),
+          _MitigationCard(result: widget.result),
           const SizedBox(height: AppSpacing.sectionGap),
           ActionButton(
-            label: 'Simpan ke Riwayat Scan',
-            icon: Icons.bookmark_add_rounded,
-            variant: ActionVariant.primary,
+            label: _isSaved ? 'Sudah Disimpan ke Riwayat' : 'Simpan ke Riwayat Scan',
+            icon: _isSaved ? Icons.check_circle_rounded : Icons.bookmark_add_rounded,
+            variant: _isSaved ? ActionVariant.secondary : ActionVariant.primary,
             fullWidth: true,
-            onPress: onSaveToHistory,
+            onPress: _isSaved ? null : _handleSave,
           ),
           const SizedBox(height: AppSpacing.s3),
           ActionButton(
@@ -54,7 +69,7 @@ class ScanResultSheetContent extends StatelessWidget {
             icon: Icons.photo_camera_rounded,
             variant: ActionVariant.secondary,
             fullWidth: true,
-            onPress: onScanAgain,
+            onPress: widget.onScanAgain,
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import asyncio
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,19 @@ import cloudinary.uploader
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+
+# Zona waktu WIB (UTC+7)
+WIB = timezone(timedelta(hours=7))
+
+def format_wib_iso(dt):
+    if dt is None:
+        return None
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            # Timestamp PostgreSQL sudah dalam zona waktu WIB
+            return dt.strftime("%Y-%m-%dT%H:%M:%S+07:00")
+        return dt.astimezone(WIB).isoformat()
+    return str(dt)
 
 # Mencegah WinError 64 / ProactorEventLoop crash di Windows
 if sys.platform == "win32":
@@ -55,13 +69,31 @@ def init_db():
                 column_no INT DEFAULT 3,
                 steps JSONB,
                 notes TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
             );
+
+            -- Pastikan kolom created_at tersimpan dalam zona waktu WIB (UTC+7)
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'mushroom_scans' 
+                      AND column_name = 'created_at' 
+                      AND data_type = 'timestamp with time zone'
+                ) THEN
+                    ALTER TABLE mushroom_scans 
+                    ALTER COLUMN created_at TYPE TIMESTAMP WITHOUT TIME ZONE 
+                    USING (created_at AT TIME ZONE 'Asia/Jakarta');
+
+                    ALTER TABLE mushroom_scans 
+                    ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta');
+                END IF;
+            END $$;
         """)
         conn.commit()
         cursor.close()
         conn.close()
-        print("Database Neon DB initialized successfully.")
+        print("Database Neon DB initialized successfully with UTC+7 (WIB) timezone.")
     except Exception as e:
         print(f"Init DB warning: {e}")
 
@@ -161,9 +193,9 @@ async def scan_mushroom(
         insert_query = """
             INSERT INTO mushroom_scans (
                 image_url, diagnosis_name, scientific_name, confidence_score,
-                infection_location, severity, rack, column_no, steps, notes
+                infection_location, severity, rack, column_no, steps, notes, created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
             RETURNING id, image_url, diagnosis_name, scientific_name, confidence_score,
                       infection_location, severity, rack, column_no, steps, notes, created_at;
         """
@@ -186,7 +218,7 @@ async def scan_mushroom(
         conn.close()
 
         if "created_at" in new_scan and new_scan["created_at"]:
-            new_scan["created_at"] = new_scan["created_at"].isoformat()
+            new_scan["created_at"] = format_wib_iso(new_scan["created_at"])
 
         return {
             "success": True,
@@ -212,7 +244,7 @@ async def get_all_scans():
 
         for s in scans:
             if "created_at" in s and s["created_at"]:
-                s["created_at"] = s["created_at"].isoformat()
+                s["created_at"] = format_wib_iso(s["created_at"])
 
         return {
             "success": True,
