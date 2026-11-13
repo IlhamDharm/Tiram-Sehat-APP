@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/app_bottom_sheet.dart';
+import '../../core/format/format_helper.dart';
 import '../../mock/mock_data.dart';
 import 'widgets/app_camera_preview.dart';
 import 'widgets/scan_viewfinder_screen.dart';
@@ -37,6 +38,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   Uint8List? _capturedBytes;
 
   ScanPhase _phase = ScanPhase.viewfinder;
+  bool _savedToHistory = false;
 
   @override
   void initState() {
@@ -244,7 +246,32 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     setState(() {
       _capturedBytes = null;
       _phase = ScanPhase.viewfinder;
+      _savedToHistory = false;
     });
+  }
+
+  void _saveToHistory() {
+    if (!_savedToHistory) {
+      final result = MockData.scanResult;
+      final bool treatable = result.severity == ScanSeverity.treatable;
+
+      MockData.historyList.insert(
+        0,
+        HistoryItem(
+          id: 'h-scan-${DateTime.now().millisecondsSinceEpoch}',
+          name: '${result.diagnosisName} (${result.scientificName})',
+          badge: treatable ? 'Bisa Diobati' : 'Harus Dibuang',
+          tone: treatable ? 'warning' : 'danger',
+          when: result.scannedAt,
+          rack: result.rack,
+          col: result.column,
+          category: HistorySectionCategory.actionRequired,
+        ),
+      );
+      _savedToHistory = true;
+    }
+
+    widget.onSavedToHistory();
   }
 
   @override
@@ -280,7 +307,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
           onToggleFlash: _toggleFlash,
           onClose: _reset,
           onScanAgain: _reset,
-          onSaveToHistory: widget.onSavedToHistory,
+          onSaveToHistory: _saveToHistory,
         );
     }
   }
@@ -397,16 +424,16 @@ class _ResultTopBar extends StatelessWidget {
       child: Row(
         children: [
           _CircleAction(
+            icon: Icons.close_rounded,
+            iconColor: AppColors.textSecondary,
+            onTap: onClose,
+          ),
+          const Spacer(),
+          _CircleAction(
             icon: Icons.flashlight_on_rounded,
             iconColor: AppColors.warning500,
             active: flashOn,
             onTap: onToggleFlash,
-          ),
-          const Spacer(),
-          _CircleAction(
-            icon: Icons.close_rounded,
-            iconColor: AppColors.textSecondary,
-            onTap: onClose,
           ),
         ],
       ),
@@ -476,7 +503,7 @@ class _DetectionBox extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
             child: Text(
-              '⚠ ${result.scientificName} 94%',
+              '⚠ ${result.scientificName} ${FormatHelper.persen(result.confidence * 100)}',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,

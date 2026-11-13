@@ -167,7 +167,7 @@ class MockData {
     scannedAt: 'Hari ini, 09:15',
   );
 
-  static const List<HistoryItem> historyList = [
+  static final List<HistoryItem> historyList = [
     // 1. Perlu Tindakan
     HistoryItem(
       id: 'h-01',
