@@ -62,11 +62,11 @@ def init_db():
                 image_url TEXT NOT NULL,
                 diagnosis_name VARCHAR(150) NOT NULL,
                 scientific_name VARCHAR(150),
-                confidence_score DOUBLE PRECISION DEFAULT 94.2,
+                confidence_score DOUBLE PRECISION DEFAULT 0.0,
                 infection_location VARCHAR(150),
                 severity VARCHAR(50) DEFAULT 'treatable',
-                rack VARCHAR(100) DEFAULT 'Rak Kumbung B-04',
-                column_no INT DEFAULT 3,
+                rack VARCHAR(100) DEFAULT 'Rak Kumbung A-01',
+                column_no INT DEFAULT 1,
                 steps JSONB,
                 notes TEXT,
                 created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
@@ -236,7 +236,20 @@ async def get_all_scans():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT * FROM mushroom_scans ORDER BY created_at DESC;")
+        cursor.execute("""SELECT 
+            id,
+            image_url,
+            diagnosis_name,
+            scientific_name,
+            confidence_score,
+            infection_location,
+            severity,
+            rack,
+            column_no,
+            steps,
+            notes,
+            created_at AT TIME ZONE 'Asia/Jakarta'
+            FROM mushroom_scans ORDER BY created_at DESC;""")
         scans = cursor.fetchall()
         
         cursor.close()
