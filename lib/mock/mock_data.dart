@@ -4,6 +4,7 @@ class HarvestEntry {
   final int pricePerKg;
   final int grossIncome;
   final String? note;
+  final String? buyer;
 
   const HarvestEntry({
     required this.date,
@@ -11,6 +12,7 @@ class HarvestEntry {
     required this.pricePerKg,
     required this.grossIncome,
     this.note,
+    this.buyer,
   });
 }
 
@@ -120,7 +122,45 @@ class MockData {
     weightKg: 18.5,
     pricePerKg: 15000,
     grossIncome: 277500,
+    buyer: 'Tengkulak Margomulyo',
+    note: 'Panen petik ke-3 kumbung selatan, kualitas baglog prima tanpa bercak.',
   );
+
+  static const harvestHistory = <HarvestEntry>[
+    harvestLast,
+    HarvestEntry(
+      date: 'Rabu, 23 Okt 2024 - 07:15 WIB',
+      weightKg: 20.0,
+      pricePerKg: 15000,
+      grossIncome: 300000,
+      buyer: 'Pasar Tradisional',
+      note: 'Panen pagi rak B-01 s/d B-05, jamur mekar segar.',
+    ),
+    HarvestEntry(
+      date: 'Selasa, 22 Okt 2024 - 07:45 WIB',
+      weightKg: 16.5,
+      pricePerKg: 14500,
+      grossIncome: 239250,
+      buyer: 'Tengkulak Margomulyo',
+      note: 'Sortasi grade A dominan, tanpa bercak kuning.',
+    ),
+    HarvestEntry(
+      date: 'Senin, 21 Okt 2024 - 07:20 WIB',
+      weightKg: 22.0,
+      pricePerKg: 15000,
+      grossIncome: 330000,
+      buyer: 'Pengecer Langganan',
+      note: 'Petik raya kumbung barat, kondisi kumbung lembap optimal.',
+    ),
+    HarvestEntry(
+      date: 'Minggu, 20 Okt 2024 - 07:30 WIB',
+      weightKg: 19.0,
+      pricePerKg: 14000,
+      grossIncome: 266000,
+      buyer: 'Pasar Tradisional',
+      note: 'Borongan eceran pasar minggu.',
+    ),
+  ];
 
   static const cycle = BaglogCycle(
     cycleNo: 4,
