@@ -72,6 +72,24 @@ class ScanResult {
     required this.column,
     required this.scannedAt,
   });
+
+  ScanResult copyWith({
+    String? rack,
+    int? column,
+  }) {
+    return ScanResult(
+      id: id,
+      diagnosisName: diagnosisName,
+      scientificName: scientificName,
+      confidence: confidence,
+      infectionLocation: infectionLocation,
+      severity: severity,
+      steps: steps,
+      rack: rack ?? this.rack,
+      column: column ?? this.column,
+      scannedAt: scannedAt,
+    );
+  }
 }
 
 enum HistorySectionCategory {

@@ -10,8 +10,9 @@ import '../../mock/mock_data.dart';
 import 'widgets/app_camera_preview.dart';
 import 'widgets/scan_viewfinder_screen.dart';
 import 'widgets/scan_result_sheet.dart';
+import 'widgets/scan_location_input.dart';
 
-enum ScanPhase { viewfinder, analyzing, result }
+enum ScanPhase { viewfinder, location, analyzing, result }
 
 class ScanScreen extends StatefulWidget {
   final VoidCallback onBack;
@@ -39,6 +40,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   ScanPhase _phase = ScanPhase.viewfinder;
   bool _savedToHistory = false;
+  ScanResult? _result;
 
   @override
   void initState() {
@@ -196,20 +198,18 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _capturedBytes = bytes;
-            _phase = ScanPhase.analyzing;
+            _phase = ScanPhase.location;
           });
         }
       } catch (e) {
         debugPrint('Take picture error: $e');
         if (mounted) {
-          setState(() => _phase = ScanPhase.analyzing);
+          setState(() => _phase = ScanPhase.location);
         }
       }
     } else {
-      setState(() => _phase = ScanPhase.analyzing);
+      setState(() => _phase = ScanPhase.location);
     }
-
-    _startAnalysisTimer();
   }
 
   Future<void> _pickFromGallery() async {
@@ -225,14 +225,25 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _capturedBytes = bytes;
-            _phase = ScanPhase.analyzing;
+            _phase = ScanPhase.location;
           });
-          _startAnalysisTimer();
         }
       }
     } catch (e) {
       debugPrint('Pick image gallery error: $e');
     }
+  }
+
+  void _startAnalysis(String rack, int column) {
+    final base = MockData.scanResult;
+    setState(() {
+      _result = base.copyWith(
+        rack: 'Rak Kumbung ${rack.toUpperCase()}',
+        column: column,
+      );
+      _phase = ScanPhase.analyzing;
+    });
+    _startAnalysisTimer();
   }
 
   void _startAnalysisTimer() {
@@ -245,6 +256,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   void _reset() {
     setState(() {
       _capturedBytes = null;
+      _result = null;
       _phase = ScanPhase.viewfinder;
       _savedToHistory = false;
     });
@@ -252,7 +264,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   void _saveToHistory() {
     if (!_savedToHistory) {
-      final result = MockData.scanResult;
+      final result = _result ?? MockData.scanResult;
       final bool treatable = result.severity == ScanSeverity.treatable;
 
       MockData.historyList.insert(
@@ -298,11 +310,18 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
           onToggleMacro: _toggleMacro,
           cameraPreview: cameraPreviewWidget,
         );
+      case ScanPhase.location:
+        return ScanLocationInput(
+          cameraPreview: cameraPreviewWidget,
+          onConfirm: _startAnalysis,
+          onCancel: _reset,
+        );
       case ScanPhase.analyzing:
         return _AnalyzingOverlay(cameraPreview: cameraPreviewWidget);
       case ScanPhase.result:
         return _ResultView(
           cameraPreview: cameraPreviewWidget,
+          result: _result ?? MockData.scanResult,
           flashOn: _flashOn,
           onToggleFlash: _toggleFlash,
           onClose: _reset,
@@ -354,6 +373,7 @@ class _AnalyzingOverlay extends StatelessWidget {
 
 class _ResultView extends StatelessWidget {
   final Widget cameraPreview;
+  final ScanResult result;
   final bool flashOn;
   final VoidCallback onToggleFlash;
   final VoidCallback onClose;
@@ -362,6 +382,7 @@ class _ResultView extends StatelessWidget {
 
   const _ResultView({
     required this.cameraPreview,
+    required this.result,
     required this.flashOn,
     required this.onToggleFlash,
     required this.onClose,
@@ -371,8 +392,6 @@ class _ResultView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = MockData.scanResult;
-
     return Stack(
       fit: StackFit.expand,
       children: [
