@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/components/neu_surface.dart';
@@ -9,9 +10,9 @@ import '../../../core/components/action_button.dart';
 import '../../../core/format/format_helper.dart';
 import '../../../mock/mock_data.dart';
 
-class ScanResultSheetContent extends StatelessWidget {
+class ScanResultSheetContent extends StatefulWidget {
   final ScanResult result;
-  final VoidCallback onSaveToHistory;
+  final void Function(String rack, int column) onSaveToHistory;
   final VoidCallback onScanAgain;
 
   const ScanResultSheetContent({
@@ -20,6 +21,32 @@ class ScanResultSheetContent extends StatelessWidget {
     required this.onSaveToHistory,
     required this.onScanAgain,
   });
+
+  @override
+  State<ScanResultSheetContent> createState() =>
+      _ScanResultSheetContentState();
+}
+
+class _ScanResultSheetContentState extends State<ScanResultSheetContent> {
+  final TextEditingController _rackController = TextEditingController();
+  int _column = 1;
+  bool _showError = false;
+
+  @override
+  void dispose() {
+    _rackController.dispose();
+    super.dispose();
+  }
+
+  bool get _isRackValid => RegExp(r'^[A-Z]$').hasMatch(_rackController.text);
+
+  void _save() {
+    if (!_isRackValid) {
+      setState(() => _showError = true);
+      return;
+    }
+    widget.onSaveToHistory(_rackController.text, _column);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,20 +60,30 @@ class ScanResultSheetContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DiagnosisHeader(result: result),
+          _DiagnosisHeader(result: widget.result),
           const SizedBox(height: AppSpacing.s4),
-          _ConfidenceCard(result: result),
+          _ConfidenceCard(result: widget.result),
           const SizedBox(height: AppSpacing.sectionGap),
-          _VisualComparison(result: result),
+          _VisualComparison(result: widget.result),
           const SizedBox(height: AppSpacing.sectionGap),
-          _MitigationCard(result: result),
+          _MitigationCard(result: widget.result),
           const SizedBox(height: AppSpacing.sectionGap),
+          _LocationForm(
+            rackController: _rackController,
+            column: _column,
+            showError: _showError,
+            onRackChanged: () {
+              if (_showError) setState(() => _showError = false);
+            },
+            onColumnChanged: (value) => setState(() => _column = value),
+          ),
+          const SizedBox(height: AppSpacing.s4),
           ActionButton(
             label: 'Simpan ke Riwayat Scan',
             icon: Icons.bookmark_add_rounded,
             variant: ActionVariant.primary,
             fullWidth: true,
-            onPress: onSaveToHistory,
+            onPress: _save,
           ),
           const SizedBox(height: AppSpacing.s3),
           ActionButton(
@@ -54,11 +91,260 @@ class ScanResultSheetContent extends StatelessWidget {
             icon: Icons.photo_camera_rounded,
             variant: ActionVariant.secondary,
             fullWidth: true,
-            onPress: onScanAgain,
+            onPress: widget.onScanAgain,
           ),
         ],
       ),
     );
+  }
+}
+
+class _LocationForm extends StatelessWidget {
+  final TextEditingController rackController;
+  final int column;
+  final bool showError;
+  final VoidCallback onRackChanged;
+  final ValueChanged<int> onColumnChanged;
+
+  const _LocationForm({
+    required this.rackController,
+    required this.column,
+    required this.showError,
+    required this.onRackChanged,
+    required this.onColumnChanged,
+  });
+
+  void _changeColumn(int delta) {
+    final next = (column + delta).clamp(1, 999);
+    if (next == column) return;
+    onColumnChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NeuSurface(
+      variant: NeuVariant.raised,
+      radius: AppRadius.tile,
+      padding: const EdgeInsets.all(AppSpacing.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.my_location_rounded,
+                  size: 20,
+                  color: AppColors.primary800,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Lokasi Baglog',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tentukan rak dan kolom sebelum menyimpan.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const _RequiredBadge(),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 84,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _FieldLabel('Rak'),
+                    const SizedBox(height: AppSpacing.s2),
+                    TextField(
+                      controller: rackController,
+                      onChanged: (_) => onRackChanged(),
+                      textAlign: TextAlign.center,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
+                        LengthLimitingTextInputFormatter(1),
+                        _UpperCaseTextFormatter(),
+                      ],
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'A',
+                        hintStyle: GoogleFonts.plusJakartaSans(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textMuted,
+                        ),
+                        filled: true,
+                        fillColor: showError
+                            ? AppColors.danger100
+                            : AppColors.surfaceInset,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppRadius.tile),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _FieldLabel('Kolom'),
+                    const SizedBox(height: AppSpacing.s2),
+                    Row(
+                      children: [
+                        _StepButton(
+                          icon: Icons.remove_rounded,
+                          onTap: () => _changeColumn(-1),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              '$column',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        _StepButton(
+                          icon: Icons.add_rounded,
+                          onTap: () => _changeColumn(1),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (showError) ...[
+            const SizedBox(height: AppSpacing.s2),
+            Text(
+              'Rak wajib diisi (huruf A-Z).',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.danger600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RequiredBadge extends StatelessWidget {
+  const _RequiredBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.warning100,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(
+        'Wajib',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.4,
+        color: AppColors.textSecondary,
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _StepButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: AppSpacing.tapTargetMin,
+        height: AppSpacing.tapTargetMin,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.tile),
+          boxShadow: AppShadows.raisedSm,
+        ),
+        child: Icon(icon, color: AppColors.primary800, size: 22),
+      ),
+    );
+  }
+}
+
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }
 
