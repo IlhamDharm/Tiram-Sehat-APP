@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # ── Database (Neon PostgreSQL) ───────────────────
     DATABASE_URL: str = ""
     DATABASE_URL_POOLED: str = ""
+    NEON_DATABASE_URL: str = ""
 
     # ── Auth ─────────────────────────────────────────
     JWT_SECRET: str = "change-me"
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

@@ -18,9 +18,12 @@ String get kBackendBaseUrl {
   };
 }
 
-/// Token sesi aktif. Login masih berupa simulasi, jadi nilainya null sampai
-/// alur autentikasi nyata dihubungkan. ApiClient otomatis memakai token ini.
-final authTokenProvider = StateProvider<String?>((ref) => null);
+/// Token sesi aktif. Menggunakan default dev token agar saat development langsung
+/// terautentikasi ke backend sebagai petani default Budi Santoso (PETANI-001).
+const String _devDefaultToken =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoiZmFybWVyIiwiZXhwIjoyMDUxMTk3MjAwLjB9.mbl1FeOf43X9F0kSLD4qOWXmTvVWxDQD3OgorKuytfY';
+
+final authTokenProvider = StateProvider<String?>((ref) => _devDefaultToken);
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient(baseUrl: kBackendBaseUrl);

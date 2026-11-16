@@ -1,7 +1,7 @@
 """Harvest service."""
 from __future__ import annotations
 
-from app.core.database import with_transaction
+from app.core.database import fetch_one, with_transaction
 from app.core.exceptions import AppException
 from app.modules.harvests import repository
 from app.modules.harvests.schemas import CreateHarvestRequest, UpdateHarvestRequest
@@ -9,10 +9,45 @@ from app.modules.harvests.schemas import CreateHarvestRequest, UpdateHarvestRequ
 
 async def create_harvest(user_id: str, payload: CreateHarvestRequest) -> dict:
     gross_income = int(round(payload.weight_kg * payload.price_per_kg))
+
+    kumbung_id = payload.kumbung_id
+    batch_id = payload.batch_id
+
+    # Fallback otomatis ke active kumbung & active batch jika tidak dikirim dari form
+    if not kumbung_id:
+        pref = await fetch_one(
+            "SELECT active_kumbung_id FROM user_preferences WHERE user_id = %(user_id)s",
+            {"user_id": user_id},
+        )
+        if pref and pref.get("active_kumbung_id"):
+            kumbung_id = str(pref["active_kumbung_id"])
+        else:
+            kumbung = await fetch_one("SELECT id FROM kumbungs LIMIT 1")
+            if kumbung:
+                kumbung_id = str(kumbung["id"])
+
+    if not batch_id:
+        batch = await fetch_one(
+            """
+            SELECT id FROM baglog_batches
+            WHERE (%(kumbung_id)s::uuid IS NULL OR kumbung_id = %(kumbung_id)s::uuid)
+              AND status = 'active'
+            ORDER BY planted_at DESC
+            LIMIT 1
+            """,
+            {"kumbung_id": kumbung_id},
+        )
+        if batch:
+            batch_id = str(batch["id"])
+        else:
+            batch = await fetch_one("SELECT id FROM baglog_batches LIMIT 1")
+            if batch:
+                batch_id = str(batch["id"])
+
     data = {
         "user_id": user_id,
-        "batch_id": payload.batch_id,
-        "kumbung_id": payload.kumbung_id,
+        "batch_id": batch_id,
+        "kumbung_id": kumbung_id,
         "harvested_at": payload.harvested_at,
         "weight_kg": payload.weight_kg,
         "price_per_kg": payload.price_per_kg,

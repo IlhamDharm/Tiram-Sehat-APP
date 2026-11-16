@@ -14,6 +14,17 @@ import '../../core/theme/tokens.dart';
 import 'domain/models/harvest_entry.dart';
 import 'presentation/providers/harvest_provider.dart';
 
+enum HarvestSort {
+  newest('Terbaru', 'Tanggal transaksi paling mutakhir', Icons.schedule_rounded),
+  highestIncome('Omzet Terbesar', 'Nilai rupiah penjualan tertinggi', Icons.payments_rounded),
+  highestWeight('Bobot Terbanyak', 'Kilogram petik jamur terbanyak', Icons.scale_rounded);
+
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  const HarvestSort(this.label, this.subtitle, this.icon);
+}
+
 /// Buku Panen — DESIGN.md §8.2 (Anggota A) + Riwayat Panen & Penjualan.
 /// AppHeader disediakan AppShell; layar ini hanya konten scroll tab.
 class HarvestScreen extends ConsumerStatefulWidget {
@@ -30,6 +41,7 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
   static const _tabs = ['Catat Panen', 'Riwayat & Kas'];
 
   int _selectedTab = 0;
+  HarvestSort _currentSort = HarvestSort.newest;
 
   late DateTime _date;
   late double _weight;
@@ -378,24 +390,73 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
         ),
         const SizedBox(height: AppSpacing.sectionGap),
 
-        // Header Daftar Transaksi
+        // Header Daftar Transaksi + Tombol Sortir (Opsi 2)
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Catatan Riwayat Petik & Kas',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Catatan Riwayat Petik & Kas',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    '${history.length} Entri tercatat',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Text(
-              '${history.length} Entri',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary600,
+            NeuSurface(
+              variant: NeuVariant.raised,
+              radius: AppRadius.pill,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  onTap: _showSortBottomSheet,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.swap_vert_rounded,
+                          size: 16,
+                          color: AppColors.primary600,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _currentSort.label,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary800,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.expand_more_rounded,
+                          size: 16,
+                          color: AppColors.primary800,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -438,7 +499,7 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
             ),
           )
         else
-          ...history.map((entry) => _buildHistoryCard(entry)),
+          ..._sortHistory(history).map((entry) => _buildHistoryCard(entry)),
 
         const SizedBox(height: AppSpacing.s4),
         Row(
@@ -462,6 +523,188 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  List<HarvestEntry> _sortHistory(List<HarvestEntry> list) {
+    final copy = List<HarvestEntry>.from(list);
+    switch (_currentSort) {
+      case HarvestSort.newest:
+        copy.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        break;
+      case HarvestSort.highestIncome:
+        copy.sort((a, b) => b.grossIncome.compareTo(a.grossIncome));
+        break;
+      case HarvestSort.highestWeight:
+        copy.sort((a, b) => b.weightKg.compareTo(a.weightKg));
+        break;
+    }
+    return copy;
+  }
+
+  void _showSortBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pagePaddingX,
+          AppSpacing.s3,
+          AppSpacing.pagePaddingX,
+          AppSpacing.s6,
+        ),
+        decoration: const BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.card),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceInset,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary100,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.swap_vert_rounded,
+                    color: AppColors.primary800,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s3),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Urutkan Riwayat',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Pilih susunan tampilan catatan panen & kas',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            for (final option in HarvestSort.values) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.s2),
+                child: NeuSurface(
+                  variant: option == _currentSort
+                      ? NeuVariant.raised
+                      : NeuVariant.flat,
+                  radius: AppRadius.tile,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.tile),
+                      onTap: () {
+                        setState(() => _currentSort = option);
+                        Navigator.of(ctx).pop();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.s3,
+                          vertical: AppSpacing.s3,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: option == _currentSort
+                                    ? AppColors.primary100
+                                    : AppColors.surfaceInset,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                option.icon,
+                                size: 18,
+                                color: option == _currentSort
+                                    ? AppColors.primary800
+                                    : AppColors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.s3),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    option.label,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 14,
+                                      fontWeight: option == _currentSort
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
+                                      color: option == _currentSort
+                                          ? AppColors.primary800
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    option.subtitle,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w400,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (option == _currentSort)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: AppColors.primary600,
+                                size: 20,
+                              )
+                            else
+                              const Icon(
+                                Icons.radio_button_unchecked_rounded,
+                                color: AppColors.textMuted,
+                                size: 20,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

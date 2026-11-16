@@ -51,5 +51,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Catatan Riwayat Petik & Kas'), findsOneWidget);
+
+    // Buka bottom sheet sortir
+    expect(find.text('Terbaru'), findsOneWidget);
+    await tester.tap(find.text('Terbaru'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Urutkan Riwayat'), findsOneWidget);
+    expect(find.text('Omzet Terbesar'), findsOneWidget);
+    expect(find.text('Bobot Terbanyak'), findsOneWidget);
+
+    // Pilih Omzet Terbesar
+    await tester.tap(find.text('Omzet Terbesar'));
+    await tester.pumpAndSettle();
+
+    // Verifikasi label tombol berubah jadi Omzet Terbesar
+    expect(find.text('Omzet Terbesar'), findsOneWidget);
   });
 }

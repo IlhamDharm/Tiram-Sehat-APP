@@ -40,7 +40,7 @@ class _AppShellState extends State<AppShell> {
       case BottomNavTab.home:
         return HomeScreen(onGoToScan: () => _selectTab(BottomNavTab.scan));
       case BottomNavTab.harvest:
-        return HarvestScreen(onSaved: () => _selectTab(BottomNavTab.home));
+        return const HarvestScreen();
       case BottomNavTab.report:
         return const ReportScreen();
       case BottomNavTab.history:
