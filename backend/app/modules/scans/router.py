@@ -24,17 +24,11 @@ async def create_scan(
     background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Save an on-device scan result, or trigger server inference if needed."""
+    """Save an on-device or manual scan result, or trigger server inference if needed."""
     scan = await service.create_scan(
         payload, user_id=user_id, background_tasks=background_tasks
     )
-    return success_response(
-        {
-            "id": str(scan["id"]),
-            "inference_status": scan.get("inference_status", "completed"),
-        },
-        status_code=201,
-    )
+    return success_response(scan, status_code=201)
 
 
 @router.post("/batch", status_code=201)

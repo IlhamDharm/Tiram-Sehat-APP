@@ -7,6 +7,11 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class ScanStepIn(BaseModel):
+    title: str
+    description: str = ""
+
+
 class ScanStepOut(BaseModel):
     step_order: int
     title: str
@@ -22,15 +27,19 @@ class CreateScanRequest(BaseModel):
     scientific_name: str | None = None
     ml_label: str | None = None
     client_id: str | None = None
-    confidence: float | None = Field(None, ge=0, le=1)
+    confidence: float | None = Field(None, ge=0, le=100)
     severity: str = "treatable"
     infection_location: str | None = None
-    scan_method: str = "on_device_tflite"
+    scan_method: str = "camera"
     scanned_at: str
     image_public_id: str | None = None
     image_url: str | None = None
     image_version: int | None = None
     image_thumbnail_url: str | None = None
+    status: str | None = None
+    status_note: str | None = None
+    status_tag: str | None = None
+    steps: list[ScanStepIn] | None = None
 
 
 class BatchSyncScanRequest(BaseModel):

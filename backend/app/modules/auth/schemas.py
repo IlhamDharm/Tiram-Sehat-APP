@@ -12,6 +12,14 @@ class LoginRequest(BaseModel):
     pin: str = Field(..., min_length=4, max_length=8)
 
 
+class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    phone: str = Field(..., min_length=8, max_length=24)
+    pin: str = Field(..., min_length=4, max_length=8)
+    farmer_id: str | None = Field(None, max_length=40)
+    kumbung_code: str = Field("A", max_length=16)
+
+
 class GoogleLoginRequest(BaseModel):
     id_token: str
 

@@ -29,11 +29,11 @@ def verify_pin(pin: str, hashed: str) -> bool:
 # ── JWT helpers ─────────────────────────────────────────────────────────────
 
 
-def create_access_token(user_id: str, role: str, extra: dict[str, Any] | None = None) -> str:
+def create_access_token(user_id: Any, role: str, extra: dict[str, Any] | None = None) -> str:
     """Create a short-lived JWT access token."""
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
-        "sub": user_id,
+        "sub": str(user_id),
         "role": role,
         "iat": now,
         "exp": now + timedelta(seconds=settings.JWT_ACCESS_TTL_SECONDS),

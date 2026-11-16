@@ -18,9 +18,10 @@ String get kBackendBaseUrl {
   };
 }
 
-/// Token sesi aktif. Login masih berupa simulasi, jadi nilainya null sampai
-/// alur autentikasi nyata dihubungkan. ApiClient otomatis memakai token ini.
+/// Token sesi aktif. Diisi saat login berhasil ke backend.
+/// ApiClient otomatis memakai token ini pada header Authorization.
 final authTokenProvider = StateProvider<String?>((ref) => null);
+final refreshTokenProvider = StateProvider<String?>((ref) => null);
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient(baseUrl: kBackendBaseUrl);

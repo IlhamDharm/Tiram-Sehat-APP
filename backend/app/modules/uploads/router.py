@@ -1,7 +1,7 @@
-"""Upload router — generate Cloudinary signatures."""
+"""Upload router — generate Cloudinary signatures and upload images."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from app.core.deps import get_current_user_id
 from app.core.exceptions import success_response
@@ -21,6 +21,23 @@ async def sign_upload(
         body.type, body.content_type, body.size, user_id
     )
     return success_response(data)
+
+
+@router.post("/image", status_code=201)
+async def upload_image(
+    file: UploadFile = File(...),
+    upload_type: str = Form("scan"),
+    _user_id: str = Depends(get_current_user_id),
+):
+    """Upload an image file to Cloudinary via backend and return URL metadata."""
+    contents = await file.read()
+    data = await service.upload_image_bytes(
+        contents=contents,
+        filename=file.filename or "scan.jpg",
+        content_type=file.content_type or "",
+        upload_type=upload_type,
+    )
+    return success_response(data, status_code=201)
 
 
 @router.post("/verify")

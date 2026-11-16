@@ -28,6 +28,7 @@ class ApiClient {
   void setToken(String token) => _accessToken = token;
   void clearToken() => _accessToken = null;
   bool get hasToken => _accessToken != null && _accessToken!.isNotEmpty;
+  String? get accessToken => _accessToken;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',

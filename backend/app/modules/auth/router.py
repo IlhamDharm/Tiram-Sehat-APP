@@ -10,6 +10,7 @@ from app.modules.auth.schemas import (
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
+    RegisterRequest,
 )
 
 router = APIRouter()
@@ -28,6 +29,21 @@ async def login(body: LoginRequest, request: Request):
         ua=request.headers.get("user-agent"),
     )
     return success_response(data)
+
+
+@router.post("/register", status_code=201)
+async def register(body: RegisterRequest, request: Request):
+    """Register a new farmer account with phone + PIN."""
+    data = await service.register_farmer(
+        name=body.name,
+        phone=body.phone,
+        pin=body.pin,
+        farmer_id=body.farmer_id,
+        kumbung_code=body.kumbung_code,
+        ip=_client_ip(request),
+        ua=request.headers.get("user-agent"),
+    )
+    return success_response(data, status_code=201)
 
 
 @router.post("/refresh")

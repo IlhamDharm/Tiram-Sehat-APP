@@ -35,6 +35,84 @@ async def find_user_by_id(user_id: str) -> dict | None:
     )
 
 
+async def find_existing_user(phone: str, farmer_id: str | None = None) -> dict | None:
+    """Check whether phone or farmer_id is already registered."""
+    if farmer_id:
+        return await fetch_one(
+            "SELECT id, phone, farmer_id FROM users WHERE phone = %(phone)s OR farmer_id = %(fid)s LIMIT 1",
+            {"phone": phone, "fid": farmer_id},
+        )
+    return await fetch_one(
+        "SELECT id, phone, farmer_id FROM users WHERE phone = %(phone)s LIMIT 1",
+        {"phone": phone},
+    )
+
+
+async def create_user(
+    conn: AsyncConnection,
+    *,
+    name: str,
+    phone: str,
+    pin_hash: str,
+    farmer_id: str | None = None,
+    kumbung_code: str = "A",
+) -> dict:
+    """Create a farmer account and assign default kumbung & preferences."""
+    cur = await conn.execute(
+        """
+        INSERT INTO users (name, phone, farmer_id, pin_hash, role, is_active)
+        VALUES (%(name)s, %(phone)s, %(farmer_id)s, %(pin_hash)s, 'farmer', TRUE)
+        RETURNING id, name, phone, farmer_id, role, email, is_active
+        """,
+        {
+            "name": name,
+            "phone": phone,
+            "farmer_id": farmer_id,
+            "pin_hash": pin_hash,
+        },
+    )
+    user = await cur.fetchone()
+    assert user is not None
+    user_id = str(user["id"])
+
+    k_cur = await conn.execute(
+        """
+        SELECT id FROM kumbungs
+        WHERE UPPER(code) = UPPER(%(code)s) AND is_active = TRUE
+        LIMIT 1
+        """,
+        {"code": kumbung_code},
+    )
+    k_row = await k_cur.fetchone()
+    if not k_row:
+        k_cur = await conn.execute(
+            "SELECT id FROM kumbungs WHERE is_active = TRUE ORDER BY code ASC LIMIT 1"
+        )
+        k_row = await k_cur.fetchone()
+
+    kumbung_id = str(k_row["id"]) if k_row else None
+    if kumbung_id:
+        await conn.execute(
+            """
+            INSERT INTO user_kumbung_assignments (user_id, kumbung_id, is_primary)
+            VALUES (%(uid)s, %(kid)s, TRUE)
+            ON CONFLICT (user_id, kumbung_id) DO NOTHING
+            """,
+            {"uid": user_id, "kid": kumbung_id},
+        )
+
+    await conn.execute(
+        """
+        INSERT INTO user_preferences (user_id, active_kumbung_id, onboarding_completed)
+        VALUES (%(uid)s, %(kid)s, TRUE)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        {"uid": user_id, "kid": kumbung_id},
+    )
+
+    return user  # type: ignore[return-value]
+
+
 async def get_user_kumbungs(user_id: str) -> list[dict]:
     """Return kumbungs assigned to the user."""
     async with get_connection() as conn:

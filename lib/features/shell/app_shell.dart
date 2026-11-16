@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../core/network/api_providers.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/app_header.dart';
 import '../../core/components/bottom_nav.dart';
@@ -7,17 +10,18 @@ import '../home/home_screen.dart';
 import '../scan/scan_screen.dart';
 import '../harvest/harvest_screen.dart';
 import '../history/history_screen.dart';
+import '../history/presentation/providers/history_provider.dart';
 import '../report/report_screen.dart';
 import '../auth/login_screen.dart';
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   static const _stackTabs = <BottomNavTab>[
     BottomNavTab.home,
     BottomNavTab.harvest,
@@ -33,6 +37,82 @@ class _AppShellState extends State<AppShell> {
       _activeTab = tab;
       _visitedTabs.add(tab);
     });
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        title: Text(
+          'Keluar dari Akun?',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Sesi login saat ini akan diakhiri dan Anda akan kembali ke halaman masuk.',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13.5,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Batal',
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger600,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Keluar',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final refreshToken = ref.read(refreshTokenProvider);
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      try {
+        await ref.read(apiClientProvider).post(
+          '/api/v1/auth/logout',
+          body: {'refresh_token': refreshToken},
+        );
+      } catch (_) {
+        // Tetap lanjut keluar secara lokal bila server tidak terjangkau.
+      }
+    }
+
+    if (!mounted) return;
+    ref.read(authTokenProvider.notifier).state = null;
+    ref.read(refreshTokenProvider.notifier).state = null;
+    ref.read(historySyncStatusProvider.notifier).state = HistorySyncStatus.idle;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
   }
 
   Widget _screenFor(BottomNavTab tab) {
@@ -88,13 +168,7 @@ class _AppShellState extends State<AppShell> {
       backgroundColor: AppColors.bg,
       appBar: immersive
           ? null
-          : AppHeader(
-              onProfilePress: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              },
-            ),
+          : AppHeader(onLogoutPress: _handleLogout),
       body: _buildBody(),
       bottomNavigationBar: immersive
           ? null
@@ -105,4 +179,3 @@ class _AppShellState extends State<AppShell> {
     );
   }
 }
-
