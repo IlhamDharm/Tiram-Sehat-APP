@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/config/app_env.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/onboarding_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppEnv.load();
   runApp(const ProviderScope(child: TiramSehatApp()));
 }
 

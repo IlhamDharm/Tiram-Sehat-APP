@@ -5,6 +5,7 @@ import 'package:http_parser/http_parser.dart';
 import '../../features/history/domain/models/history_item.dart';
 import '../../features/scan/domain/models/scan_result.dart';
 import '../network/api_client.dart';
+import '../network/api_providers.dart';
 
 /// Layanan API terpadu untuk integrasi Cloudinary & Neon DB melalui backend
 /// `/api/v1/uploads` dan `/api/v1/scans`.
@@ -12,16 +13,7 @@ class ScanApiService {
   ScanApiService._();
   static final ScanApiService instance = ScanApiService._();
 
-  static const String _configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
-
-  static String get defaultBaseUrl {
-    if (_configuredBaseUrl.isNotEmpty) return _configuredBaseUrl;
-    if (kIsWeb) return 'http://localhost:8000';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000';
-    }
-    return 'http://localhost:8000';
-  }
+  static String get defaultBaseUrl => kBackendBaseUrl;
 
   /// Mengunggah gambar baglog ke Cloudinary via `/api/v1/uploads/image`
   /// lalu menyimpan metadata scan ke Neon DB via `POST /api/v1/scans`.

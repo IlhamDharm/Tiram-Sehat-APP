@@ -1,35 +1,12 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../config/app_env.dart';
 import 'api_client.dart';
 
-/// Base URL backend FastAPI.
-///
-/// Override saat build/run, misalnya untuk HP fisik:
-/// `flutter run --dart-define=API_BASE_URL=http://192.168.1.212:8000`
-const String _configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
+/// Base URL backend FastAPI (diatur lewat file `.env` di root project,
+/// atau override via `--dart-define=API_BASE_URL=...`).
+String get kBackendBaseUrl => AppEnv.baseUrl;
 
-String get kBackendBaseUrl {
-  if (_configuredBaseUrl.isNotEmpty) return _configuredBaseUrl;
-  if (kIsWeb) return 'http://localhost:8000';
-  return switch (defaultTargetPlatform) {
-    // HP fisik via `adb reverse tcp:8000 tcp:8000` memakai 127.0.0.1;
-    // emulator Android akan otomatis fallback ke 10.0.2.2.
-    TargetPlatform.android => 'http://127.0.0.1:8000',
-    _ => 'http://localhost:8000',
-  };
-}
-
-List<String> get kBackendFallbackUrls {
-  if (_configuredBaseUrl.isNotEmpty || kIsWeb) return const [];
-  if (defaultTargetPlatform == TargetPlatform.android) {
-    return const [
-      'http://10.0.2.2:8000',
-      'http://192.168.1.212:8000',
-      'http://localhost:8000',
-    ];
-  }
-  return const [];
-}
+List<String> get kBackendFallbackUrls => AppEnv.fallbackUrls;
 
 /// Token sesi aktif. Diisi saat login atau registrasi berhasil ke backend.
 /// ApiClient otomatis memakai token ini pada header Authorization.
