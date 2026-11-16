@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/tokens.dart';
@@ -7,12 +7,15 @@ import '../../core/components/section_card.dart';
 import '../../core/components/segmented_tabs.dart';
 import '../../core/components/action_button.dart';
 import '../../core/format/format_helper.dart';
+import '../harvest/domain/models/harvest_entry.dart';
+import '../harvest/presentation/providers/harvest_provider.dart';
 import 'domain/models/report_data.dart';
 import 'presentation/providers/report_provider.dart';
 import 'widgets/trend_chart.dart';
 
 /// Layar Evaluasi & Laporan (Anggota E)
-/// Sesuai dengan spesifikasi DESIGN Tiram-Sehat.md §8.7 & §9.2 dan screenshot laporan.png
+/// Terhubung langsung dengan pencatatan buku panen (Harvest),
+/// siklus kesehatan baglog (Scan & Diagnosa), dan riwayat perlakuan kumbung.
 class ReportScreen extends ConsumerStatefulWidget {
   const ReportScreen({super.key});
 
@@ -24,13 +27,16 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   int _selectedTabIndex = 0;
   static const _tabs = ['Minggu Ini', 'Bulan Ini', 'Tahun Ini'];
 
-  void _downloadReport() {
+  /// Ringkasan statis (kartu efisiensi & kerugian) dari layer data laporan.
+  ReportData get _report => ref.watch(reportProvider);
+
+  void _downloadReport(String periodName, double kg, int income) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Rekap laporan (CSV / PDF) berhasil disiapkan di penyimpanan lokal',
+          'Rekap laporan $periodName (${FormatHelper.kg(kg)} / ${FormatHelper.rupiahSingkat(income)}) berhasil disiapkan!',
           style: GoogleFonts.plusJakartaSans(
-            fontSize: 13,
+            fontSize: 12.5,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -45,7 +51,29 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final report = ref.watch(reportProvider);
+    final weekly = ref.watch(weeklyHarvestReportProvider);
+    final monthly = ref.watch(monthlyHarvestReportProvider);
+    final yearly = ref.watch(yearlyHarvestReportProvider);
+    final latestHarvest = ref.watch(latestHarvestProvider);
+    final cycle = ref.watch(cycleProvider);
+
+    final double activeKg;
+    final int activeIncome;
+    final String activePeriodName;
+
+    if (_selectedTabIndex == 0) {
+      activeKg = weekly.totalKg;
+      activeIncome = weekly.totalIncome;
+      activePeriodName = 'Pekan ${weekly.periodLabel}';
+    } else if (_selectedTabIndex == 1) {
+      activeKg = monthly.totalKg;
+      activeIncome = monthly.totalIncome;
+      activePeriodName = 'Bulan ${monthly.monthName}';
+    } else {
+      activeKg = yearly.totalKg;
+      activeIncome = yearly.totalIncome;
+      activePeriodName = 'Tahun ${yearly.year}';
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -66,24 +94,26 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             value: _selectedTabIndex,
             onChange: (index) => setState(() => _selectedTabIndex = index),
           ),
+          const SizedBox(height: AppSpacing.s4),
+          if (_selectedTabIndex == 0) ...[
+            _buildWeekNavigator(weekly),
+            const SizedBox(height: AppSpacing.s4),
+          ],
+          _buildMetricsRow(weekly, monthly, yearly),
           const SizedBox(height: AppSpacing.sectionGap),
-          _buildTodayTiles(report),
+          _buildEfficiencySection(weekly, monthly, yearly, cycle),
           const SizedBox(height: AppSpacing.sectionGap),
-          _buildEfficiencySection(report),
+          _buildAccumulationSection(weekly, monthly, yearly),
           const SizedBox(height: AppSpacing.sectionGap),
-          _buildMonthlyAccumulationSection(report),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildBatchCard(report.batch),
+          _buildBatchCard(latestHarvest),
           const SizedBox(height: AppSpacing.sectionGap),
           ActionButton(
             label: 'Unduh Rekap Laporan (CSV / PDF)',
             icon: Icons.download_rounded,
             variant: ActionVariant.secondary,
             fullWidth: true,
-            onPress: _downloadReport,
+            onPress: () => _downloadReport(activePeriodName, activeKg, activeIncome),
           ),
-          const SizedBox(height: AppSpacing.s4),
-          _buildFooterNote(),
         ],
       ),
     );
@@ -109,7 +139,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 
   Widget _buildSubtitle() {
     return Text(
-      'Ikhtisar produksi jamur tiram dan performa finansial kumbung berbasis pencatatan mandiri.',
+      'Ikhtisar produksi jamur tiram dan performa finansial kumbung berbasis pencatatan mandiri dari fitur buku panen.',
       style: GoogleFonts.plusJakartaSans(
         fontSize: 13.5,
         height: 1.45,
@@ -119,10 +149,147 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     );
   }
 
-  Widget _buildTodayTiles(ReportData report) {
+  /// Navigasi pekan khusus untuk tab "Minggu Ini" (Minggu s/d Sabtu)
+  Widget _buildWeekNavigator(WeeklyReportSummary weekly) {
+    return NeuSurface(
+      variant: NeuVariant.raised,
+      radius: AppRadius.card,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Material(
+            color: AppColors.surfaceInset,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final current = ref.read(selectedReportDateProvider);
+                ref.read(selectedReportDateProvider.notifier).state =
+                    current.subtract(const Duration(days: 7));
+              },
+              child: const SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_left_rounded,
+                  color: AppColors.primary800,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 13,
+                      color: AppColors.primary600,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Pekan 7 Hari (Min - Sab)',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  weekly.periodLabel,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: AppColors.surfaceInset,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final current = ref.read(selectedReportDateProvider);
+                ref.read(selectedReportDateProvider.notifier).state =
+                    current.add(const Duration(days: 7));
+              },
+              child: const SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.primary800,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricsRow(
+    WeeklyReportSummary weekly,
+    MonthlyReportSummary monthly,
+    YearlyReportSummary yearly,
+  ) {
+    final String harvestTitle;
+    final String harvestValue;
+    final String harvestDeltaText;
+    final String harvestDeltaBadge;
+    final bool isPositive;
+
+    final String incomeTitle;
+    final String incomeValue;
+    final String incomeAvgText;
+
+    if (_selectedTabIndex == 0) {
+      harvestTitle = 'Total Panen Minggu Ini';
+      harvestValue = weekly.totalKg.toStringAsFixed(1).replaceAll('.', ',');
+      harvestDeltaText = '${weekly.deltaKgText} dr pekan lalu';
+      harvestDeltaBadge = weekly.deltaPctText;
+      isPositive = weekly.deltaPct >= 0;
+
+      incomeTitle = 'Penghasilan Minggu Ini';
+      incomeValue = FormatHelper.rupiahSingkat(weekly.totalIncome);
+      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahSingkat(weekly.avgPrice.round())} / Kg';
+    } else if (_selectedTabIndex == 1) {
+      harvestTitle = 'Total Panen Bulan Ini';
+      harvestValue = monthly.totalKg.toStringAsFixed(1).replaceAll('.', ',');
+      harvestDeltaText = '${monthly.deltaKgText} dr bulan lalu';
+      harvestDeltaBadge = monthly.deltaPctText;
+      isPositive = monthly.deltaPct >= 0;
+
+      incomeTitle = 'Penghasilan Bulan Ini';
+      incomeValue = FormatHelper.rupiahSingkat(monthly.totalIncome);
+      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahSingkat(monthly.avgPrice.round())} / Kg';
+    } else {
+      harvestTitle = 'Total Panen Tahun Ini';
+      harvestValue = yearly.totalKg.toStringAsFixed(1).replaceAll('.', ',');
+      harvestDeltaText = 'Akumulasi tahunan';
+      harvestDeltaBadge = '+12,0%';
+      isPositive = true;
+
+      incomeTitle = 'Penghasilan Tahun Ini';
+      incomeValue = FormatHelper.rupiahSingkat(yearly.totalIncome);
+      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahSingkat(yearly.avgPrice.round())} / Kg';
+    }
+
     return Row(
       children: [
-        // Total Panen Hari Ini
+        // Kartu Kiri: Total Panen
         Expanded(
           child: NeuSurface(
             variant: NeuVariant.raised,
@@ -144,30 +311,30 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       child: const Icon(
                         Icons.hourglass_empty_rounded,
                         color: AppColors.primary800,
-                        size: 20,
+                        size: 18,
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.primary100,
+                        color: isPositive ? AppColors.primary100 : AppColors.danger100,
                         borderRadius: BorderRadius.circular(AppRadius.pill),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
-                            Icons.trending_up_rounded,
-                            size: 14,
-                            color: AppColors.primary600,
+                          Icon(
+                            isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                            size: 11,
+                            color: isPositive ? AppColors.primary600 : AppColors.danger600,
                           ),
                           const SizedBox(width: 3),
                           Text(
-                            '+18%',
+                            harvestDeltaBadge,
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
+                              fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.primary600,
+                              color: isPositive ? AppColors.primary600 : AppColors.danger600,
                             ),
                           ),
                         ],
@@ -177,12 +344,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ),
                 const SizedBox(height: AppSpacing.s3),
                 Text(
-                  'Total Panen Hari Ini',
+                  harvestTitle,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w500,
                     color: AppColors.textMuted,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Row(
@@ -190,9 +359,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      '24,5',
+                      harvestValue,
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 28,
+                        fontSize: 24,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
                       ),
@@ -201,7 +370,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                     Text(
                       'Kg',
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textSecondary,
                       ),
@@ -211,19 +380,19 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 const SizedBox(height: AppSpacing.s2),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.check_circle_outline_rounded,
-                      size: 14,
-                      color: AppColors.primary600,
+                    Icon(
+                      isPositive ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
+                      size: 13,
+                      color: isPositive ? AppColors.primary600 : AppColors.danger600,
                     ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        '+4,2 Kg dr kemarin',
+                        harvestDeltaText,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w500,
-                          color: AppColors.primary600,
+                          color: isPositive ? AppColors.primary600 : AppColors.danger600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -236,7 +405,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           ),
         ),
         const SizedBox(width: AppSpacing.s3),
-        // Penjualan Hari Ini
+        // Kartu Kanan: Penghasilan
         Expanded(
           child: NeuSurface(
             variant: NeuVariant.raised,
@@ -270,7 +439,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       child: Text(
                         'Tunai',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                           color: AppColors.primary600,
                         ),
@@ -280,18 +449,20 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ),
                 const SizedBox(height: AppSpacing.s3),
                 Text(
-                  'Penjualan Hari Ini',
+                  incomeTitle,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w500,
                     color: AppColors.textMuted,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Rp 367.500',
+                  incomeValue,
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: AppColors.primary800,
                   ),
@@ -303,15 +474,15 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                   children: [
                     const Icon(
                       Icons.sell_outlined,
-                      size: 14,
+                      size: 13,
                       color: AppColors.textMuted,
                     ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        'Rp 15.000 / Kg',
+                        incomeAvgText,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w500,
                           color: AppColors.textMuted,
                         ),
@@ -329,7 +500,39 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     );
   }
 
-  Widget _buildEfficiencySection(ReportData report) {
+  Widget _buildEfficiencySection(
+    WeeklyReportSummary weekly,
+    MonthlyReportSummary monthly,
+    YearlyReportSummary yearly,
+    BaglogCycle cycle,
+  ) {
+    final String chartTitle;
+    final String chartBadge;
+    final List<double> chartValues;
+    final List<String> chartLabels;
+
+    if (_selectedTabIndex == 0) {
+      chartTitle = 'Tren Panen Harian (Min - Sab)';
+      chartBadge = 'Total ${FormatHelper.kg(weekly.totalKg)}';
+      chartValues = weekly.dailyKg;
+      chartLabels = weekly.dayLabels; // ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
+    } else if (_selectedTabIndex == 1) {
+      chartTitle = 'Tren Panen Mingguan (4 Pekan)';
+      chartBadge = 'Total ${FormatHelper.kg(monthly.totalKg)}';
+      chartValues = monthly.weeklyKg;
+      chartLabels = monthly.weekLabels;
+    } else {
+      chartTitle = 'Tren Panen Kuartal (Tahun Ini)';
+      chartBadge = 'Total ${FormatHelper.kg(yearly.totalKg)}';
+      chartValues = yearly.quarterlyKg;
+      chartLabels = yearly.quarterLabels;
+    }
+
+    final healthyCount = _report.healthy;
+    final infectedCount = _report.contaminated;
+    final totalCount = _report.totalBaglog;
+    final healthRatioPct = (_report.success * 100).toStringAsFixed(1).replaceAll('.', ',');
+
     return SectionCard(
       icon: Icons.eco_rounded,
       title: 'Tingkat Keberhasilan Panen',
@@ -349,7 +552,6 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       children: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Subtitle EFISIENSI SIKLUS KUMBUNG di atas judul atau di dalam kartu
           Text(
             'EFISIENSI SIKLUS KUMBUNG',
             style: GoogleFonts.plusJakartaSans(
@@ -360,7 +562,6 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.s3),
-          // Inset Well Persentase Keberhasilan
           NeuSurface(
             variant: NeuVariant.inset,
             radius: AppRadius.tile,
@@ -368,7 +569,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             child: Row(
               children: [
                 Text(
-                  '89,4%',
+                  '$healthRatioPct%',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 34,
                     fontWeight: FontWeight.w800,
@@ -388,7 +589,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       ),
                     ),
                     Text(
-                      '2.400 Baglog',
+                      FormatHelper.baglog(totalCount),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -401,22 +602,26 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.s4),
-          // Header Tren Kualitas Panen (4 Pekan)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Tren Kualitas Panen (4 Pekan)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
+              Expanded(
+                child: Text(
+                  chartTitle,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               Text(
-                '+7,4% akumulatif',
+                chartBadge,
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                   color: AppColors.primary600,
                 ),
@@ -424,38 +629,46 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.s2),
-          // Custom Painter Chart 4 titik
-          const TrendChart(
-            values: [82.0, 85.0, 88.0, 89.4],
-            labels: ['M1: 82%', 'M2: 85%', 'M3: 88%', '89,4%'],
+          // Chart terhubung dengan data panen harian/mingguan
+          TrendChart(
+            values: chartValues,
+            labels: chartLabels,
+            unit: 'Kg',
           ),
           const SizedBox(height: AppSpacing.s3),
-          // Legenda Sehat & Terkontaminasi
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primary600,
-                      shape: BoxShape.circle,
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary600,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '2.146 Sehat & Berbuah',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        '${FormatHelper.baglog(healthyCount)} Sehat & Berbuah',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     width: 7,
@@ -465,11 +678,11 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
-                    '254 Terkontaminasi',
+                    '$infectedCount Terkontaminasi',
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textSecondary,
                     ),
@@ -479,7 +692,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.s2),
-          // Progress Bar (proporsi 2146 / 2400 ≈ 0.894)
+          // Progress Bar efisiensi
           ClipRRect(
             borderRadius: BorderRadius.circular(AppRadius.pill),
             child: SizedBox(
@@ -488,7 +701,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 children: [
                   Container(color: AppColors.danger100),
                   FractionallySizedBox(
-                    widthFactor: 2146 / 2400,
+                    widthFactor: (healthyCount / totalCount).clamp(0.0, 1.0),
                     child: Container(color: AppColors.primary400),
                   ),
                 ],
@@ -500,14 +713,40 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     );
   }
 
-  Widget _buildMonthlyAccumulationSection(ReportData report) {
+  Widget _buildAccumulationSection(
+    WeeklyReportSummary weekly,
+    MonthlyReportSummary monthly,
+    YearlyReportSummary yearly,
+  ) {
+    final String sectionTitle;
+    final String periodLabel;
+    final int income;
+    final double weight;
+
+    if (_selectedTabIndex == 0) {
+      sectionTitle = 'Akumulasi Pekan Ini';
+      periodLabel = weekly.periodLabel;
+      income = weekly.totalIncome;
+      weight = weekly.totalKg;
+    } else if (_selectedTabIndex == 1) {
+      sectionTitle = 'Akumulasi Bulan Ini';
+      periodLabel = monthly.monthName;
+      income = monthly.totalIncome;
+      weight = monthly.totalKg;
+    } else {
+      sectionTitle = 'Akumulasi Tahun Ini';
+      periodLabel = '${yearly.year}';
+      income = yearly.totalIncome;
+      weight = yearly.totalKg;
+    }
+
     return SectionCard(
       icon: Icons.account_balance_wallet_outlined,
-      title: 'Akumulasi Bulan Ini',
+      title: sectionTitle,
       trailing: Text(
-        'Okt 2026',
+        periodLabel,
         style: GoogleFonts.plusJakartaSans(
-          fontSize: 13,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
           color: AppColors.textSecondary,
         ),
@@ -529,25 +768,25 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       Text(
                         'Total Pemasukan Panen',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                           color: AppColors.textMuted,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        FormatHelper.rupiah(report.monthIncome),
+                        FormatHelper.rupiahSingkat(income),
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 22,
+                          fontSize: 21,
                           fontWeight: FontWeight.w800,
                           color: AppColors.primary800,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Total bersih ${FormatHelper.kg(report.monthKg)} jamur segar',
+                        'Total bersih ${FormatHelper.kg(weight)} jamur segar',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w400,
                           color: AppColors.textSecondary,
                         ),
@@ -589,7 +828,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                           Text(
                             'Estimasi Kerugian Baglog',
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w500,
                               color: AppColors.danger600,
                             ),
@@ -604,9 +843,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        FormatHelper.rupiah(report.monthLoss),
+                        FormatHelper.rupiah(_report.monthLoss),
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 22,
+                          fontSize: 21,
                           fontWeight: FontWeight.w800,
                           color: AppColors.danger600,
                         ),
@@ -627,12 +866,16 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                               color: AppColors.danger600,
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              'Ditekan ${report.lossReducedPct}% via deteksi dini',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.danger600,
+                            Flexible(
+                              child: Text(
+                                'Ditekan ${_report.lossReducedPct}% via deteksi dini',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.danger600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -711,7 +954,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     );
   }
 
-  Widget _buildBatchCard(BatchData batch) {
+  Widget _buildBatchCard(HarvestEntry latest) {
+    final batch = ref.watch(reportProvider).batch;
+
     return NeuSurface(
       variant: NeuVariant.raised,
       radius: AppRadius.card,
@@ -719,7 +964,6 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Thumbnail jamur
           Container(
             width: 58,
             height: 58,
@@ -768,7 +1012,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Varietas ${batch.variety} • Hari ke-${batch.day}',
+                  'Varietas ${batch.variety} â€¢ Hari ke-${batch.day}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
@@ -787,48 +1031,28 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       child: Text(
                         batch.grade,
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w700,
                           color: AppColors.primary800,
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      'Timbang ${batch.weighedAt}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textMuted,
+                    Expanded(
+                      child: Text(
+                        'Petik ${latest.date}',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textMuted,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFooterNote() {
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.cloud_off_rounded,
-            size: 15,
-            color: AppColors.textMuted,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'Data disimpan di memori HP, siap dicetak kapan saja',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: AppColors.textMuted,
             ),
           ),
         ],

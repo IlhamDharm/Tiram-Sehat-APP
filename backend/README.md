@@ -35,13 +35,27 @@ backend/
 │       └── schemas.py          # Pydantic request/response
 ├── migrations/                 # SQL migration berurutan
 ├── seeds/                      # Data master
-├── tests/                      # (belum ada test otomatis)
+├── tests/                      # Unit test stdlib unittest
+├── main.py                     # Entrypoint legacy (dipakai ScanApiService Flutter)
+├── requirement.txt             # Dependensi entrypoint legacy
 ├── requirements.txt
 └── run.py
 ```
 
 Aturan dependensi: `router → service → repository → database`. Router tidak
 berisi SQL; repository tidak berisi aturan bisnis.
+
+### Catatan: dua entrypoint selama masa transisi
+
+| Entrypoint | Perintah | Dipakai oleh |
+|---|---|---|
+| Baru (`app/main.py`) | `python run.py` | `ApiClient` Flutter (`/api/v1/...`) |
+| Legacy (`main.py`) | `uvicorn main:app --port 8000` | `ScanApiService` Flutter (`/api/scan`, `/api/scans`) |
+
+Keduanya berbagi database Neon. `main.py` membaca `NEON_DATABASE_URL`, sedangkan
+`app/core/config.py` membaca `DATABASE_URL` (lihat `.env.example`). Target
+integrasi berikutnya: satukan `/api/scan` & `/api/scans` ke router
+`app/modules/scans` lalu hapus entrypoint legacy.
 
 ## Menjalankan
 

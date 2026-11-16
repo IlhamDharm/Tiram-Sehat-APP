@@ -83,10 +83,11 @@ Buka Aplikasi
   Tindakan Lanjut
 ```
 
-> **Status integrasi saat ini:** Beranda sudah memanggil backend dan fitur Scan
-> menyimpan hasil ke antrean lokal + riwayat. Buku Panen, Riwayat awal, dan
-> Laporan masih memakai datasource lokal (seed) yang siap diganti implementasi
-> API/SQLite tanpa mengubah widget.
+> **Status integrasi saat ini:** Beranda, Scan (upload Cloudinary + antrean
+> offline), Buku Panen, dan Laporan sudah memakai provider/Riverpod dengan data
+> dinamis. Scan masih memakai entrypoint backend legacy (`backend/main.py`)
+> melalui `ScanApiService`, sedangkan sisa fitur menuju `/api/v1/...` pada
+> `backend/app`. Penyatuan kedua jalur itu adalah langkah integrasi berikutnya.
 
 ---
 

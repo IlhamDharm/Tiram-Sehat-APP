@@ -7,7 +7,7 @@ import '../features/report/domain/models/report_data.dart';
 /// File ini hanya boleh diimpor oleh datasource mock/local. Layer UI dan
 /// service produksi harus bergantung pada model domain, bukan pada folder ini.
 class MockData {
-  static const harvestLast = HarvestEntry(
+  static final harvestLast = HarvestEntry(
     date: 'Kamis, 24 Okt 2024 - 07:30 WIB',
     weightKg: 18.5,
     pricePerKg: 15000,
@@ -16,7 +16,7 @@ class MockData {
     note: 'Panen petik ke-3 kumbung selatan, kualitas baglog prima tanpa bercak.',
   );
 
-  static const harvestHistory = <HarvestEntry>[
+  static final harvestHistory = <HarvestEntry>[
     harvestLast,
     HarvestEntry(
       date: 'Rabu, 23 Okt 2024 - 07:15 WIB',

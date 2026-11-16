@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/scan_api_service.dart';
 import '../../../scan/domain/models/scan_result.dart';
 import '../../data/datasources/history_local_datasource.dart';
 import '../../data/repositories/history_repository.dart';
@@ -26,6 +27,21 @@ class HistoryController extends StateNotifier<List<HistoryItem>> {
 
   void refresh() => state = _repository.getHistory();
 
+  /// Menarik riwayat terbaru dari backend (Neon) lalu menggabungkannya dengan
+  /// data lokal. Dipakai pull-to-refresh; gagal koneksi bukan error fatal.
+  Future<void> refreshFromRemote() async {
+    try {
+      final remote = await ScanApiService.instance.fetchScanHistory();
+      if (remote.isEmpty) return;
+
+      final remoteIds = remote.map((item) => item.id).toSet();
+      final localOnly = state.where((item) => !remoteIds.contains(item.id));
+      state = [...remote, ...localOnly];
+    } catch (_) {
+      // Fallback ke data lokal bila backend belum berjalan / offline.
+    }
+  }
+
   void addFromScan(ScanResult result) {
     if (state.any((item) => item.id == result.id)) return;
 
@@ -49,6 +65,7 @@ class HistoryController extends StateNotifier<List<HistoryItem>> {
       category: isHealthy
           ? HistorySectionCategory.recovered
           : HistorySectionCategory.actionRequired,
+      imageUrl: result.imageUrl,
     );
 
     state = [item, ...state];
@@ -79,9 +96,33 @@ class HistoryController extends StateNotifier<List<HistoryItem>> {
             tag: current.tag,
             note: current.note,
             isInitiallyExpanded: true,
+            imageUrl: current.imageUrl,
           )
         else
           current,
     ];
+  }
+
+  void markAsRecovered(String id) {
+    HistoryItem? target;
+    for (final item in state) {
+      if (item.id == id) {
+        target = item;
+        break;
+      }
+    }
+    if (target != null) markHandled(target);
+  }
+
+  /// Menghapus entri dari daftar; entri dari backend ikut dihapus di server.
+  Future<void> remove(String id) async {
+    state = state.where((item) => item.id != id).toList();
+
+    if (id.startsWith('neon-')) {
+      final numericId = int.tryParse(id.replaceFirst('neon-', ''));
+      if (numericId != null) {
+        await ScanApiService.instance.deleteScan(numericId);
+      }
+    }
   }
 }

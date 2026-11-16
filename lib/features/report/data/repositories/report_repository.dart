@@ -7,4 +7,6 @@ class ReportRepository {
   ReportRepository(this._local);
 
   ReportData getReport() => _local.getReport();
+
+  BaglogCycle getCycle() => _local.getCycle();
 }

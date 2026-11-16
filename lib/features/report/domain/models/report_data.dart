@@ -1,3 +1,22 @@
+/// Ringkasan satu siklus baglog (kartu efisiensi laporan).
+class BaglogCycle {
+  final int cycleNo;
+  final int total;
+  final int healthy;
+  final int treatable;
+  final int discarded;
+  final double healthRatio;
+
+  const BaglogCycle({
+    required this.cycleNo,
+    required this.total,
+    required this.healthy,
+    required this.treatable,
+    required this.discarded,
+    required this.healthRatio,
+  });
+}
+
 /// Ringkasan batch tanam yang sedang berjalan.
 class BatchData {
   final String code;

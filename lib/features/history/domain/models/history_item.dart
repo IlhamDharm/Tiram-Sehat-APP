@@ -16,6 +16,7 @@ class HistoryItem {
   final String? note;
   final String? actionLabel;
   final bool isInitiallyExpanded;
+  final String? imageUrl;
 
   const HistoryItem({
     required this.id,
@@ -31,6 +32,7 @@ class HistoryItem {
     this.note,
     this.actionLabel,
     this.isInitiallyExpanded = false,
+    this.imageUrl,
   });
 
   String get rackLocation => '$rack • Kolom $col';

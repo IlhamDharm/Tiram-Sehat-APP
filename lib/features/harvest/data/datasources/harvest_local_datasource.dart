@@ -1,8 +1,10 @@
-import '../../../../mock/mock_data.dart';
 import '../../domain/models/harvest_entry.dart';
+import 'harvest_seed.dart';
 
-/// Data panen lokal (seed prototipe). Nanti bisa diganti implementasi SQLite
-/// tanpa mengubah UI karena UI hanya bergantung pada repository.
+/// Data panen lokal.
+///
+/// Saat ini memakai seed prototipe; ganti isi method ini dengan query SQLite
+/// atau endpoint `/harvests` tanpa mengubah provider maupun widget.
 class HarvestLocalDataSource {
-  List<HarvestEntry> getHistory() => List<HarvestEntry>.from(MockData.harvestHistory);
+  List<HarvestEntry> getHistory() => buildInitialHarvests();
 }

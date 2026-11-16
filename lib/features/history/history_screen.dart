@@ -112,9 +112,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             item.badge == 'Harus Dibuang' || item.badge == 'Telah Dibuang')
         .length;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.pagePaddingX,
+    return RefreshIndicator(
+      color: AppColors.primary600,
+      onRefresh: () =>
+          ref.read(historyControllerProvider.notifier).refreshFromRemote(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pagePaddingX,
         AppSpacing.s4,
         AppSpacing.pagePaddingX,
         96,
@@ -214,6 +219,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           // 8. Kartu Aksi Inspeksi Manual Baglog
           _buildManualInspectionCard(),
         ],
+        ),
       ),
     );
   }

@@ -22,6 +22,7 @@ class ScanResult {
   final String rack;
   final int column;
   final String scannedAt;
+  final String? imageUrl;
 
   const ScanResult({
     required this.id,
@@ -34,11 +35,13 @@ class ScanResult {
     required this.rack,
     required this.column,
     required this.scannedAt,
+    this.imageUrl,
   });
 
   ScanResult copyWith({
     String? rack,
     int? column,
+    String? imageUrl,
   }) {
     return ScanResult(
       id: id,
@@ -51,6 +54,7 @@ class ScanResult {
       rack: rack ?? this.rack,
       column: column ?? this.column,
       scannedAt: scannedAt,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 }
