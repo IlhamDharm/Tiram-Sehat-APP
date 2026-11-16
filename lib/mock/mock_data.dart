@@ -1,19 +1,31 @@
+import '../core/format/format_helper.dart';
+
 class HarvestEntry {
-  final String date;
+  final String id;
+  final DateTime dateTime;
   final double weightKg;
   final int pricePerKg;
   final int grossIncome;
   final String? note;
   final String? buyer;
+  final String? customDate;
 
-  const HarvestEntry({
-    required this.date,
+  HarvestEntry({
+    String? id,
+    DateTime? dateTime,
+    String? date,
     required this.weightKg,
     required this.pricePerKg,
-    required this.grossIncome,
+    int? grossIncome,
     this.note,
     this.buyer,
-  });
+    String? customDate,
+  })  : dateTime = dateTime ?? DateTime.now(),
+        customDate = customDate ?? date,
+        id = id ?? '${(dateTime ?? DateTime.now()).millisecondsSinceEpoch}_$weightKg',
+        grossIncome = grossIncome ?? (weightKg * pricePerKg).round();
+
+  String get date => customDate ?? FormatHelper.dateTimeLong(dateTime);
 }
 
 class BaglogCycle {
@@ -61,6 +73,7 @@ class ScanResult {
   final String rack;
   final int column;
   final String scannedAt;
+  final String? imageUrl;
 
   const ScanResult({
     required this.id,
@@ -73,6 +86,7 @@ class ScanResult {
     required this.rack,
     required this.column,
     required this.scannedAt,
+    this.imageUrl,
   });
 }
 
@@ -96,6 +110,7 @@ class HistoryItem {
   final String? note;
   final String? actionLabel;
   final bool isInitiallyExpanded;
+  final String? imageUrl;
 
   const HistoryItem({
     required this.id,
@@ -111,14 +126,16 @@ class HistoryItem {
     this.note,
     this.actionLabel,
     this.isInitiallyExpanded = false,
+    this.imageUrl,
   });
 
   String get rackLocation => '$rack • Kolom $col';
 }
 
 class MockData {
-  static const harvestLast = HarvestEntry(
-    date: 'Kamis, 24 Okt 2024 - 07:30 WIB',
+  static final harvestLast = HarvestEntry(
+    dateTime: DateTime(2024, 10, 24, 7, 30),
+    customDate: 'Kamis, 24 Okt 2024 - 07:30 WIB',
     weightKg: 18.5,
     pricePerKg: 15000,
     grossIncome: 277500,
@@ -126,10 +143,11 @@ class MockData {
     note: 'Panen petik ke-3 kumbung selatan, kualitas baglog prima tanpa bercak.',
   );
 
-  static const harvestHistory = <HarvestEntry>[
+  static final harvestHistory = <HarvestEntry>[
     harvestLast,
     HarvestEntry(
-      date: 'Rabu, 23 Okt 2024 - 07:15 WIB',
+      dateTime: DateTime(2024, 10, 23, 7, 15),
+      customDate: 'Rabu, 23 Okt 2024 - 07:15 WIB',
       weightKg: 20.0,
       pricePerKg: 15000,
       grossIncome: 300000,
@@ -137,7 +155,8 @@ class MockData {
       note: 'Panen pagi rak B-01 s/d B-05, jamur mekar segar.',
     ),
     HarvestEntry(
-      date: 'Selasa, 22 Okt 2024 - 07:45 WIB',
+      dateTime: DateTime(2024, 10, 22, 7, 45),
+      customDate: 'Selasa, 22 Okt 2024 - 07:45 WIB',
       weightKg: 16.5,
       pricePerKg: 14500,
       grossIncome: 239250,
@@ -145,7 +164,8 @@ class MockData {
       note: 'Sortasi grade A dominan, tanpa bercak kuning.',
     ),
     HarvestEntry(
-      date: 'Senin, 21 Okt 2024 - 07:20 WIB',
+      dateTime: DateTime(2024, 10, 21, 7, 20),
+      customDate: 'Senin, 21 Okt 2024 - 07:20 WIB',
       weightKg: 22.0,
       pricePerKg: 15000,
       grossIncome: 330000,
@@ -153,7 +173,8 @@ class MockData {
       note: 'Petik raya kumbung barat, kondisi kumbung lembap optimal.',
     ),
     HarvestEntry(
-      date: 'Minggu, 20 Okt 2024 - 07:30 WIB',
+      dateTime: DateTime(2024, 10, 20, 7, 30),
+      customDate: 'Minggu, 20 Okt 2024 - 07:30 WIB',
       weightKg: 19.0,
       pricePerKg: 14000,
       grossIncome: 266000,

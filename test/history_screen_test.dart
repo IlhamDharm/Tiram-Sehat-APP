@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tiram_sehat/features/history/history_screen.dart';
 
@@ -6,9 +7,11 @@ void main() {
   testWidgets('HistoryScreen renders title, search, filter chips, and sections',
       (WidgetTester tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: HistoryScreen(),
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: HistoryScreen(),
+          ),
         ),
       ),
     );

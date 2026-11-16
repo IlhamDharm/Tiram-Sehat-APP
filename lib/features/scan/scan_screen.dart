@@ -1,19 +1,22 @@
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/app_bottom_sheet.dart';
 import '../../core/format/format_helper.dart';
+import '../../core/services/scan_api_service.dart';
 import '../../mock/mock_data.dart';
+import '../history/history_provider.dart';
 import 'widgets/app_camera_preview.dart';
 import 'widgets/scan_viewfinder_screen.dart';
 import 'widgets/scan_result_sheet.dart';
 
 enum ScanPhase { viewfinder, analyzing, result }
 
-class ScanScreen extends StatefulWidget {
+class ScanScreen extends ConsumerStatefulWidget {
   final VoidCallback onBack;
   final VoidCallback onSavedToHistory;
 
@@ -24,10 +27,10 @@ class ScanScreen extends StatefulWidget {
   });
 
   @override
-  State<ScanScreen> createState() => _ScanScreenState();
+  ConsumerState<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
+class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObserver {
   CameraController? _controller;
   List<CameraDescription> _cameras = const [];
   bool _isInitializing = true;
@@ -36,9 +39,10 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   bool _macroOn = false;
 
   Uint8List? _capturedBytes;
+  ScanResult? _scanResult;
+  bool _isSavingHistory = false;
 
   ScanPhase _phase = ScanPhase.viewfinder;
-  bool _savedToHistory = false;
 
   @override
   void initState() {
@@ -189,27 +193,45 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _capture() async {
+    Uint8List? bytes;
     if (_controller != null && _controller!.value.isInitialized) {
       try {
         final xFile = await _controller!.takePicture();
-        final bytes = await xFile.readAsBytes();
-        if (mounted) {
-          setState(() {
-            _capturedBytes = bytes;
-            _phase = ScanPhase.analyzing;
-          });
-        }
+        bytes = await xFile.readAsBytes();
       } catch (e) {
         debugPrint('Take picture error: $e');
-        if (mounted) {
-          setState(() => _phase = ScanPhase.analyzing);
-        }
       }
-    } else {
-      setState(() => _phase = ScanPhase.analyzing);
     }
 
-    _startAnalysisTimer();
+    // Jika di lingkungan emulator kamera tidak mengembalikan bytes, gunakan sampel gambar JPEG
+    // agar proses upload ke Cloudinary & Neon DB tetap berjalan nyata.
+    bytes ??= _generateSampleImageBytes();
+
+    if (mounted) {
+      setState(() {
+        _capturedBytes = bytes;
+      });
+    }
+
+    await _analyzeBytes(bytes);
+  }
+
+  static Uint8List _generateSampleImageBytes() {
+    return Uint8List.fromList([
+      0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
+      0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
+      0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09,
+      0x09, 0x08, 0x0A, 0x0C, 0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
+      0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D, 0x1A, 0x1C, 0x1C, 0x20,
+      0x24, 0x2E, 0x27, 0x20, 0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
+      0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39, 0x3D, 0x38, 0x32,
+      0x3C, 0x2E, 0x33, 0x34, 0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
+      0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x1F, 0x00, 0x00,
+      0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+      0x09, 0x0A, 0x0B, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F,
+      0x00, 0xBF, 0x80, 0xFF, 0xD9
+    ]);
   }
 
   Future<void> _pickFromGallery() async {
@@ -225,50 +247,110 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         if (mounted) {
           setState(() {
             _capturedBytes = bytes;
-            _phase = ScanPhase.analyzing;
           });
-          _startAnalysisTimer();
         }
+        await _analyzeBytes(bytes);
       }
     } catch (e) {
       debugPrint('Pick image gallery error: $e');
     }
   }
 
-  void _startAnalysisTimer() {
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (!mounted || _phase != ScanPhase.analyzing) return;
-      setState(() => _phase = ScanPhase.result);
+  Future<void> _analyzeBytes(Uint8List? bytes) async {
+    setState(() => _phase = ScanPhase.analyzing);
+
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted || _phase != ScanPhase.analyzing) return;
+    setState(() {
+      _scanResult = MockData.scanResult;
+      _phase = ScanPhase.result;
     });
   }
 
   void _reset() {
     setState(() {
       _capturedBytes = null;
+      _scanResult = null;
+      _isSavingHistory = false;
       _phase = ScanPhase.viewfinder;
-      _savedToHistory = false;
     });
   }
 
-  void _saveToHistory(String rack, int column) {
-    if (!_savedToHistory) {
-      final result = MockData.scanResult;
-      final bool treatable = result.severity == ScanSeverity.treatable;
+  Future<void> _handleSaveToHistory(
+    ScanResult activeResult,
+    String rack,
+    int column,
+  ) async {
+    if (_isSavingHistory) return;
+    _isSavingHistory = true;
 
-      MockData.historyList.insert(
-        0,
-        HistoryItem(
-          id: 'h-scan-${DateTime.now().millisecondsSinceEpoch}',
-          name: '${result.diagnosisName} (${result.scientificName})',
-          badge: treatable ? 'Bisa Diobati' : 'Harus Dibuang',
-          tone: treatable ? 'warning' : 'danger',
-          when: result.scannedAt,
-          rack: 'Rak Kumbung ${rack.toUpperCase()}',
-          col: column,
-          category: HistorySectionCategory.actionRequired,
+    final formattedRack = 'Rak Kumbung ${rack.toUpperCase()}';
+    var finalResult = ScanResult(
+      id: 'scan-${DateTime.now().millisecondsSinceEpoch}',
+      diagnosisName: activeResult.diagnosisName,
+      scientificName: activeResult.scientificName,
+      confidence: activeResult.confidence,
+      infectionLocation: activeResult.infectionLocation,
+      severity: activeResult.severity,
+      steps: activeResult.steps,
+      rack: formattedRack,
+      column: column,
+      scannedAt: activeResult.scannedAt,
+      imageUrl: activeResult.imageUrl,
+    );
+
+    if (_capturedBytes != null && _capturedBytes!.isNotEmpty) {
+      try {
+        final uploaded = await ScanApiService.instance.uploadScan(
+          bytes: _capturedBytes!,
+          filename: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          rack: formattedRack,
+          column: column,
+        );
+        finalResult = uploaded;
+      } catch (e) {
+        debugPrint('Save to history upload error: $e');
+      }
+    }
+
+    if (!mounted) return;
+    ref.read(historyListProvider.notifier).addScanResult(finalResult);
+
+    if (mounted) {
+      final bool isCloudSaved =
+          finalResult.imageUrl != null && finalResult.imageUrl!.isNotEmpty;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isCloudSaved ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                color: isCloudSaved ? AppColors.primary400 : Colors.amberAccent,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isCloudSaved
+                      ? 'Hasil scan disimpan ke Neon DB & Cloudinary (img_jamur)'
+                      : 'Backend offline (port 8000). Hasil scan tersimpan di riwayat lokal',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor:
+              isCloudSaved ? AppColors.primary800 : const Color(0xFF5D2E14),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          duration: const Duration(seconds: 4),
         ),
       );
-      _savedToHistory = true;
     }
 
     widget.onSavedToHistory();
@@ -301,13 +383,16 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       case ScanPhase.analyzing:
         return _AnalyzingOverlay(cameraPreview: cameraPreviewWidget);
       case ScanPhase.result:
+        final activeResult = _scanResult ?? MockData.scanResult;
         return _ResultView(
+          result: activeResult,
           cameraPreview: cameraPreviewWidget,
           flashOn: _flashOn,
           onToggleFlash: _toggleFlash,
           onClose: _reset,
           onScanAgain: _reset,
-          onSaveToHistory: _saveToHistory,
+          onSaveToHistory: (rack, column) =>
+              _handleSaveToHistory(activeResult, rack, column),
         );
     }
   }
@@ -353,6 +438,7 @@ class _AnalyzingOverlay extends StatelessWidget {
 }
 
 class _ResultView extends StatelessWidget {
+  final ScanResult result;
   final Widget cameraPreview;
   final bool flashOn;
   final VoidCallback onToggleFlash;
@@ -361,6 +447,7 @@ class _ResultView extends StatelessWidget {
   final void Function(String rack, int column) onSaveToHistory;
 
   const _ResultView({
+    required this.result,
     required this.cameraPreview,
     required this.flashOn,
     required this.onToggleFlash,
@@ -371,8 +458,6 @@ class _ResultView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final result = MockData.scanResult;
-
     return Stack(
       fit: StackFit.expand,
       children: [

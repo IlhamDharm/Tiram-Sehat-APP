@@ -21,6 +21,7 @@ class ActionButton extends StatelessWidget {
   });
 
   Color get _bg {
+    if (onPress == null) return const Color(0xFFE2E7E1);
     switch (variant) {
       case ActionVariant.primary: return AppColors.primary800;
       case ActionVariant.secondary: return AppColors.surface;
@@ -30,6 +31,7 @@ class ActionButton extends StatelessWidget {
   }
 
   Color get _textColor {
+    if (onPress == null) return AppColors.textMuted;
     switch (variant) {
       case ActionVariant.primary: return AppColors.textOnPrimary;
       case ActionVariant.secondary: return AppColors.primary800;
@@ -39,6 +41,7 @@ class ActionButton extends StatelessWidget {
   }
 
   List<BoxShadow> get _shadows {
+    if (onPress == null) return [];
     switch (variant) {
       case ActionVariant.primary: return AppShadows.buttonPrimary;
       case ActionVariant.secondary:

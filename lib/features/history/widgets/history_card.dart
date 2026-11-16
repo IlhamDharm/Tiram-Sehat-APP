@@ -86,7 +86,10 @@ class HistoryCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                BaglogThumbnail(indicatorType: _indicatorType),
+                BaglogThumbnail(
+                  indicatorType: _indicatorType,
+                  imageUrl: item.imageUrl,
+                ),
                 const SizedBox(width: AppSpacing.s3),
                 Expanded(
                   child: Column(

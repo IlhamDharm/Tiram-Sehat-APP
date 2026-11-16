@@ -53,3 +53,8 @@ app.*.map.json
 # Markdown files (except README.md)
 *.md
 !README.md
+
+# Backend Environment & Python Cache
+backend/.env
+backend/__pycache__/
+backend/venv/

@@ -11,10 +11,12 @@ enum ThumbnailIndicatorType {
 /// dengan sistem desain TiramSehat (tanpa ornamen buatan/AI slop).
 class BaglogThumbnail extends StatelessWidget {
   final ThumbnailIndicatorType indicatorType;
+  final String? imageUrl;
 
   const BaglogThumbnail({
     super.key,
     required this.indicatorType,
+    this.imageUrl,
   });
 
   @override
@@ -99,12 +101,28 @@ class BaglogThumbnail extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Ikon baglog / media tanam bersih
-          Icon(
-            Icons.inventory_2_rounded,
-            size: 24,
-            color: AppColors.textMuted.withValues(alpha: 0.45),
-          ),
+          // Gambar asli dari Cloudinary atau ikon default
+          if (imageUrl != null && imageUrl!.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Image.network(
+                imageUrl!,
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.inventory_2_rounded,
+                  size: 24,
+                  color: AppColors.textMuted.withValues(alpha: 0.45),
+                ),
+              ),
+            )
+          else
+            Icon(
+              Icons.inventory_2_rounded,
+              size: 24,
+              color: AppColors.textMuted.withValues(alpha: 0.45),
+            ),
           // Titik indikator status di pojok kanan-bawah
           Positioned(
             right: 5,
