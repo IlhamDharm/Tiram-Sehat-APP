@@ -69,31 +69,13 @@ def init_db():
                 column_no INT DEFAULT 1,
                 steps JSONB,
                 notes TEXT,
-                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
-
-            -- Pastikan kolom created_at tersimpan dalam zona waktu WIB (UTC+7)
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'mushroom_scans' 
-                      AND column_name = 'created_at' 
-                      AND data_type = 'timestamp with time zone'
-                ) THEN
-                    ALTER TABLE mushroom_scans 
-                    ALTER COLUMN created_at TYPE TIMESTAMP WITHOUT TIME ZONE 
-                    USING (created_at AT TIME ZONE 'Asia/Jakarta');
-
-                    ALTER TABLE mushroom_scans 
-                    ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta');
-                END IF;
-            END $$;
         """)
         conn.commit()
         cursor.close()
         conn.close()
-        print("Database Neon DB initialized successfully with UTC+7 (WIB) timezone.")
+        print("Database Neon DB initialized successfully.")
     except Exception as e:
         print(f"Init DB warning: {e}")
 
@@ -195,7 +177,7 @@ async def scan_mushroom(
                 image_url, diagnosis_name, scientific_name, confidence_score,
                 infection_location, severity, rack, column_no, steps, notes, created_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, image_url, diagnosis_name, scientific_name, confidence_score,
                       infection_location, severity, rack, column_no, steps, notes, created_at;
         """
@@ -216,9 +198,6 @@ async def scan_mushroom(
         conn.commit()
         cursor.close()
         conn.close()
-
-        if "created_at" in new_scan and new_scan["created_at"]:
-            new_scan["created_at"] = format_wib_iso(new_scan["created_at"])
 
         return {
             "success": True,
@@ -248,16 +227,12 @@ async def get_all_scans():
             column_no,
             steps,
             notes,
-            created_at AT TIME ZONE 'Asia/Jakarta'
+            created_at 
             FROM mushroom_scans ORDER BY created_at DESC;""")
         scans = cursor.fetchall()
         
         cursor.close()
         conn.close()
-
-        for s in scans:
-            if "created_at" in s and s["created_at"]:
-                s["created_at"] = format_wib_iso(s["created_at"])
 
         return {
             "success": True,
