@@ -93,8 +93,18 @@ class _HarvestScreenState extends ConsumerState<HarvestScreen> {
   }
 
   void _save() {
+    final now = DateTime.now();
+    final harvestDateTime = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      now.hour,
+      now.minute,
+      now.second,
+    );
+
     final entry = HarvestEntry(
-      date: '${_formatTanggalPanjang(_date)} - 07:30 WIB',
+      dateTime: harvestDateTime,
       weightKg: _weight,
       pricePerKg: _price,
       grossIncome: _grossIncome,

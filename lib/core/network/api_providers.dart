@@ -24,7 +24,22 @@ final authTokenProvider = StateProvider<String?>((ref) => null);
 final refreshTokenProvider = StateProvider<String?>((ref) => null);
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  final client = ApiClient(baseUrl: kBackendBaseUrl);
+  final candidateUrls = <String>[
+    if (_configuredBaseUrl.isNotEmpty) _configuredBaseUrl,
+    if (kIsWeb)
+      'http://localhost:8000'
+    else ...[
+      'http://127.0.0.1:8000', // HP fisik via adb reverse USB
+      'http://10.0.2.2:8000', // Android Emulator
+      'http://192.168.1.212:8000', // Wi-Fi LAN
+      'http://localhost:8000',
+    ],
+  ];
+
+  final primary = candidateUrls.first;
+  final fallbacks = candidateUrls.skip(1).toList();
+
+  final client = ApiClient(baseUrl: primary, fallbackUrls: fallbacks);
   final token = ref.watch(authTokenProvider);
   if (token != null && token.isNotEmpty) {
     client.setToken(token);

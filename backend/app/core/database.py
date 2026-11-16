@@ -25,8 +25,11 @@ async def open_pool() -> AsyncConnectionPool:
     conninfo = settings.DATABASE_URL_POOLED or settings.DATABASE_URL
     pool = AsyncConnectionPool(
         conninfo=conninfo,
-        min_size=2,
+        min_size=1,
         max_size=10,
+        max_idle=120.0,
+        max_lifetime=600.0,
+        check=AsyncConnectionPool.check_connection,
         open=False,
         kwargs={"row_factory": dict_row},
     )

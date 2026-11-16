@@ -27,8 +27,8 @@ class HarvestRemoteDataSource {
     final list = res.data as List<dynamic>;
     return list.map((item) {
       final map = item as Map<String, dynamic>;
-      final dt = DateTime.tryParse(map['harvested_at'] as String? ?? '') ??
-          DateTime.now();
+      final rawDt = DateTime.tryParse(map['harvested_at'] as String? ?? '');
+      final dt = rawDt != null ? rawDt.toLocal() : DateTime.now();
       return HarvestEntry(
         id: map['id']?.toString(),
         dateTime: dt,

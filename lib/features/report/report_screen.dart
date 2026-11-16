@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/tokens.dart';
@@ -9,6 +10,7 @@ import '../../core/components/action_button.dart';
 import '../../core/format/format_helper.dart';
 import '../harvest/domain/models/harvest_entry.dart';
 import '../harvest/presentation/providers/harvest_provider.dart';
+import 'data/services/report_pdf_service.dart';
 import 'domain/models/report_data.dart';
 import 'presentation/providers/report_provider.dart';
 import 'widgets/trend_chart.dart';
@@ -30,23 +32,199 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   /// Ringkasan statis (kartu efisiensi & kerugian) dari layer data laporan.
   ReportData get _report => ref.watch(reportProvider);
 
-  void _downloadReport(String periodName, double kg, int income) {
+  Future<void> _handleExportPdf({
+    required WeeklyReportSummary weekly,
+    required MonthlyReportSummary monthly,
+    required String activePeriodName,
+    required double activeKg,
+    required int activeIncome,
+  }) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceInset,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.picture_as_pdf_rounded,
+                      color: AppColors.primary800,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ekspor Laporan Resmi (PDF)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'BUMDes Margomulyo • Unit Jamur Tiram',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.bg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.surfaceInset),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Periode', style: GoogleFonts.plusJakartaSans(fontSize: 12, color: AppColors.textMuted)),
+                        Text(activePeriodName, style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total Panen', style: GoogleFonts.plusJakartaSans(fontSize: 12, color: AppColors.textMuted)),
+                        Text(FormatHelper.kg(activeKg), style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary800)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total Penerimaan Kas', style: GoogleFonts.plusJakartaSans(fontSize: 12, color: AppColors.textMuted)),
+                        Text(FormatHelper.rupiah(activeIncome), style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary800)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              ActionButton(
+                label: 'Simpan / Bagikan ke WhatsApp (PDF)',
+                icon: Icons.share_rounded,
+                variant: ActionVariant.primary,
+                fullWidth: true,
+                onPress: () async {
+                  Navigator.pop(ctx);
+                  _generateAndSharePdf(weekly: weekly, monthly: monthly);
+                },
+              ),
+              const SizedBox(height: 10),
+              ActionButton(
+                label: 'Batal',
+                variant: ActionVariant.secondary,
+                fullWidth: true,
+                onPress: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _generateAndSharePdf({
+    required WeeklyReportSummary weekly,
+    required MonthlyReportSummary monthly,
+  }) async {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          'Rekap laporan $periodName (${FormatHelper.kg(kg)} / ${FormatHelper.rupiahSingkat(income)}) berhasil disiapkan!',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-          ),
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Menyusun dokumen PDF resmi...',
+              style: GoogleFonts.plusJakartaSans(fontSize: 12.5),
+            ),
+          ],
         ),
         backgroundColor: AppColors.primary800,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        duration: const Duration(seconds: 2),
       ),
     );
+
+    try {
+      final Uint8List pdfBytes;
+      final String filename;
+      final now = DateTime.now();
+      final dateTag = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+
+      if (_selectedTabIndex == 0) {
+        pdfBytes = await ReportPdfService.generateWeeklyReportPdf(weekly: weekly);
+        filename = 'Laporan_Panen_Pekan_${dateTag}.pdf';
+      } else {
+        final harvests = ref.read(harvestListProvider);
+        pdfBytes = await ReportPdfService.generateMonthlyReportPdf(
+          monthly: monthly,
+          entries: harvests,
+        );
+        filename = 'Laporan_Panen_${monthly.monthName}_${monthly.year}.pdf';
+      }
+
+      await ReportPdfService.shareOrSavePdf(
+        pdfBytes: pdfBytes,
+        filename: filename,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengekspor PDF: $e'),
+          backgroundColor: AppColors.danger600,
+        ),
+      );
+    }
   }
 
   @override
@@ -108,11 +286,17 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           _buildBatchCard(latestHarvest),
           const SizedBox(height: AppSpacing.sectionGap),
           ActionButton(
-            label: 'Unduh Rekap Laporan (CSV / PDF)',
-            icon: Icons.download_rounded,
+            label: 'Unduh Rekap Laporan Resmi (PDF)',
+            icon: Icons.picture_as_pdf_rounded,
             variant: ActionVariant.secondary,
             fullWidth: true,
-            onPress: () => _downloadReport(activePeriodName, activeKg, activeIncome),
+            onPress: () => _handleExportPdf(
+              weekly: weekly,
+              monthly: monthly,
+              activePeriodName: activePeriodName,
+              activeKg: activeKg,
+              activeIncome: activeIncome,
+            ),
           ),
         ],
       ),

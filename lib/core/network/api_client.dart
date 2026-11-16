@@ -14,14 +14,16 @@ class ApiResponse {
 }
 
 class ApiClient {
-  final String baseUrl;
+  String baseUrl;
+  final List<String> fallbackUrls;
   final Duration timeout;
   String? _accessToken;
   final http.Client _http;
 
   ApiClient({
     required this.baseUrl,
-    this.timeout = const Duration(seconds: 20),
+    this.fallbackUrls = const [],
+    this.timeout = const Duration(seconds: 10),
     http.Client? client,
   }) : _http = client ?? http.Client();
 
@@ -35,36 +37,58 @@ class ApiClient {
         if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
       };
 
-  Future<ApiResponse> get(String path, {Map<String, String>? query}) async {
-    final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
-    final res = await _http.get(uri, headers: _headers).timeout(timeout);
-    return _parse(res);
+  Future<ApiResponse> _execute(Future<http.Response> Function(String base) fn) async {
+    final urls = [baseUrl, ...fallbackUrls.where((u) => u != baseUrl)];
+    Exception? lastException;
+    for (final url in urls) {
+      try {
+        final res = await fn(url).timeout(timeout);
+        // Simpan URL yang berhasil sebagai baseUrl utama untuk panggilan berikutnya
+        baseUrl = url;
+        return _parse(res);
+      } catch (e) {
+        lastException = e is Exception ? e : Exception(e.toString());
+        continue;
+      }
+    }
+    throw lastException ?? Exception('Gagal terhubung ke server backend');
+  }
+
+  Future<ApiResponse> get(String path, {Map<String, String>? query}) {
+    return _execute((base) {
+      final uri = Uri.parse('$base$path').replace(queryParameters: query);
+      return _http.get(uri, headers: _headers);
+    });
   }
 
   Future<ApiResponse> post(String path,
-      {Object? body, Map<String, String>? headers}) async {
-    final uri = Uri.parse('$baseUrl$path');
-    final res = await _http
-        .post(uri,
-            headers: {..._headers, ...?headers},
-            body: body != null ? jsonEncode(body) : null)
-        .timeout(timeout);
-    return _parse(res);
+      {Object? body, Map<String, String>? headers}) {
+    return _execute((base) {
+      final uri = Uri.parse('$base$path');
+      return _http.post(
+        uri,
+        headers: {..._headers, ...?headers},
+        body: body != null ? jsonEncode(body) : null,
+      );
+    });
   }
 
-  Future<ApiResponse> patch(String path, {Object? body}) async {
-    final uri = Uri.parse('$baseUrl$path');
-    final res = await _http
-        .patch(uri,
-            headers: _headers, body: body != null ? jsonEncode(body) : null)
-        .timeout(timeout);
-    return _parse(res);
+  Future<ApiResponse> patch(String path, {Object? body}) {
+    return _execute((base) {
+      final uri = Uri.parse('$base$path');
+      return _http.patch(
+        uri,
+        headers: _headers,
+        body: body != null ? jsonEncode(body) : null,
+      );
+    });
   }
 
-  Future<ApiResponse> delete(String path) async {
-    final uri = Uri.parse('$baseUrl$path');
-    final res = await _http.delete(uri, headers: _headers).timeout(timeout);
-    return _parse(res);
+  Future<ApiResponse> delete(String path) {
+    return _execute((base) {
+      final uri = Uri.parse('$base$path');
+      return _http.delete(uri, headers: _headers);
+    });
   }
 
   ApiResponse _parse(http.Response res) {
