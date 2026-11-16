@@ -4,7 +4,7 @@ import '../../../core/theme/tokens.dart';
 import '../../../core/components/neu_surface.dart';
 import '../../../core/components/status_badge.dart';
 import '../../../core/components/action_button.dart';
-import '../../../mock/mock_data.dart';
+import '../domain/models/history_item.dart';
 import 'baglog_thumbnail.dart';
 
 /// Kartu riwayat inspeksi baglog berbasis accordion (expand/collapse)

@@ -1,0 +1,2 @@
+"""Baglogs module."""
+

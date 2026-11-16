@@ -1,0 +1,7 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+gradio>=4.44.0
+httpx>=0.28.1
+Pillow>=10.0.0
+numpy>=1.26.0
+tflite-runtime>=2.14.0

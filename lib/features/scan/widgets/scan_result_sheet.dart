@@ -7,7 +7,7 @@ import '../../../core/components/status_badge.dart';
 import '../../../core/components/step_list.dart';
 import '../../../core/components/action_button.dart';
 import '../../../core/format/format_helper.dart';
-import '../../../mock/mock_data.dart';
+import '../domain/models/scan_result.dart';
 
 class ScanResultSheetContent extends StatelessWidget {
   final ScanResult result;
@@ -110,9 +110,17 @@ class _DiagnosisHeader extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const StatusBadge(
-              label: 'Bisa Diobati',
-              tone: StatusTone.warning,
+            StatusBadge(
+              label: result.severity == ScanSeverity.healthy
+                  ? 'Sehat Produktif'
+                  : result.severity == ScanSeverity.mustDiscard
+                      ? 'Harus Dibuang'
+                      : 'Bisa Diobati',
+              tone: result.severity == ScanSeverity.healthy
+                  ? StatusTone.success
+                  : result.severity == ScanSeverity.mustDiscard
+                      ? StatusTone.danger
+                      : StatusTone.warning,
               solid: true,
             ),
             const SizedBox(height: AppSpacing.s6),

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/neu_surface.dart';
 import '../../core/components/app_chip.dart';
 import '../../core/components/status_badge.dart';
-import '../../mock/mock_data.dart';
+import 'domain/models/history_item.dart';
+import 'presentation/providers/history_provider.dart';
 import 'widgets/history_card.dart';
 import 'widgets/history_archived_card.dart';
 
@@ -17,14 +19,14 @@ enum HistoryFilterType {
 /// Layar Riwayat Deteksi Baglog (Anggota D)
 /// Mengimplementasikan arsip inspeksi kamera, pencarian, filter chips,
 /// accordion kartu riwayat, bagian pengobatan, pemulihan, arsip, dan inspeksi manual.
-class HistoryScreen extends StatefulWidget {
+class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   HistoryFilterType _selectedFilter = HistoryFilterType.all;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -32,18 +34,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // State ekspansi per item id
   final Map<String, bool> _expandedState = {};
-
-  // Daftar data lokal untuk mendukung interaksi dinamis
-  late List<HistoryItem> _items;
-
-  @override
-  void initState() {
-    super.initState();
-    _items = List.from(MockData.historyList);
-    for (final item in _items) {
-      _expandedState[item.id] = item.isInitiallyExpanded;
-    }
-  }
 
   @override
   void dispose() {
@@ -58,11 +48,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _handleAction(HistoryItem item) {
+    ref.read(historyControllerProvider.notifier).markHandled(item);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           item.actionLabel != null
-              ? '${item.actionLabel} berhasil dicatat lokal'
+              ? '${item.actionLabel} berhasil dicatat'
               : 'Status diperbarui',
           style: GoogleFonts.plusJakartaSans(fontSize: 13),
         ),
@@ -77,9 +68,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final items = ref.watch(historyControllerProvider);
+
     // Saring data berdasarkan query pencarian
     final query = _searchQuery.toLowerCase().trim();
-    final filtered = _items.where((item) {
+    final filtered = items.where((item) {
       if (query.isEmpty) return true;
       final matchName = item.name.toLowerCase().contains(query);
       final matchRack = item.rackLocation.toLowerCase().contains(query);
@@ -109,10 +102,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return item.category == HistorySectionCategory.archived;
     }).toList();
 
-    // Hitung counter untuk chip filter sesuai §8.6
-    const countAll = 10; // Semua Temuan (10)
-    const countAction = 7; // Perlu Tindakan (7)
-    const countDiscard = 3; // Harus Dibuang (3)
+    // Hitung counter untuk chip filter dari data yang sedang tampil.
+    final countAll = items.length;
+    final countAction = items
+        .where((item) => item.category == HistorySectionCategory.actionRequired)
+        .length;
+    final countDiscard = items
+        .where((item) =>
+            item.badge == 'Harus Dibuang' || item.badge == 'Telah Dibuang')
+        .length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -139,7 +137,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // 4. Daftar Kartu Perlu Tindakan
           if (actionItems.isNotEmpty) ...[
             ...actionItems.map((item) {
-              final isExp = _expandedState[item.id] ?? false;
+              final isExp = _expandedState.putIfAbsent(
+                item.id,
+                () => item.isInitiallyExpanded,
+              );
               return Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.s4),
                 child: HistoryCard(
@@ -165,7 +166,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             const SizedBox(height: AppSpacing.s3),
             ...recoveredItems.map((item) {
-              final isExp = _expandedState[item.id] ?? true;
+              final isExp = _expandedState.putIfAbsent(
+                item.id,
+                () => item.isInitiallyExpanded,
+              );
               return Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.s4),
                 child: HistoryCard(
@@ -312,9 +316,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
               // Buka filter tanggal
               showDatePicker(
                 context: context,
-                initialDate: DateTime(2024, 10, 24),
-                firstDate: DateTime(2024, 1, 1),
-                lastDate: DateTime(2025, 12, 31),
+                initialDate: DateTime.now(),
+                firstDate: DateTime(2020),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
               );
             },
             child: const Icon(

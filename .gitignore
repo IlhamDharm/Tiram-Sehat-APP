@@ -50,6 +50,31 @@ app.*.map.json
 # Agent
 .agent/
 
-# Markdown files (except README.md)
+# Python / FastAPI backend
+.venv/
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets & local environment
+.env
+.env.*
+backend/.env
+backend/.env.*
+!.env.example
+!backend/.env.example
+
+# Local databases & model artifacts
+*.sqlite
+*.sqlite3
+*.db
+
+# Markdown files (keep project documentation)
 *.md
 !README.md
+!docs/**/*.md
+!backend/README.md
+!ml-service/README.md

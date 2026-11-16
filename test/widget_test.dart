@@ -23,9 +23,11 @@ void main() {
   testWidgets('Buku Panen menampilkan salinan §8.2 dan estimasi realtime',
       (WidgetTester tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: const Scaffold(body: HarvestScreen()),
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const Scaffold(body: HarvestScreen()),
+        ),
       ),
     );
 
@@ -43,7 +45,9 @@ void main() {
 
   testWidgets('App shell membuka tab Buku Panen', (WidgetTester tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: AppShell()),
+      const ProviderScope(
+        child: MaterialApp(home: AppShell()),
+      ),
     );
 
     await tester.tap(find.byIcon(Icons.menu_book_rounded));

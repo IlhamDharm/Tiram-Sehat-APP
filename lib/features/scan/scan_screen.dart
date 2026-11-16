@@ -1,12 +1,17 @@
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/app_bottom_sheet.dart';
 import '../../core/format/format_helper.dart';
-import '../../mock/mock_data.dart';
+import '../../core/network/api_providers.dart';
+import '../history/presentation/providers/history_provider.dart';
+import 'data/services/offline_sync_manager.dart';
+import 'data/services/on_device_classifier_service.dart';
+import 'domain/models/scan_result.dart';
 import 'widgets/app_camera_preview.dart';
 import 'widgets/scan_viewfinder_screen.dart';
 import 'widgets/scan_result_sheet.dart';
@@ -14,7 +19,7 @@ import 'widgets/scan_location_input.dart';
 
 enum ScanPhase { viewfinder, location, analyzing, result }
 
-class ScanScreen extends StatefulWidget {
+class ScanScreen extends ConsumerStatefulWidget {
   final VoidCallback onBack;
   final VoidCallback onSavedToHistory;
 
@@ -25,10 +30,10 @@ class ScanScreen extends StatefulWidget {
   });
 
   @override
-  State<ScanScreen> createState() => _ScanScreenState();
+  ConsumerState<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
+class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObserver {
   CameraController? _controller;
   List<CameraDescription> _cameras = const [];
   bool _isInitializing = true;
@@ -41,6 +46,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   ScanPhase _phase = ScanPhase.viewfinder;
   bool _savedToHistory = false;
   ScanResult? _result;
+  String? _scanError;
 
   @override
   void initState() {
@@ -234,53 +240,74 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _startAnalysis(String rack, int column) {
-    final base = MockData.scanResult;
+  Future<void> _startAnalysis(String rack, int column) async {
     setState(() {
-      _result = base.copyWith(
-        rack: 'Rak Kumbung ${rack.toUpperCase()}',
+      _phase = ScanPhase.analyzing;
+      _scanError = null;
+    });
+
+    try {
+      // 1. Eksekusi klasifikasi on-device (offline).
+      final scanResult = await OnDeviceClassifierService.classify(
+        imageBytes: _capturedBytes,
+        rack: rack,
         column: column,
       );
-      _phase = ScanPhase.analyzing;
-    });
-    _startAnalysisTimer();
+
+      if (mounted) {
+        setState(() {
+          _result = scanResult;
+          _phase = ScanPhase.result;
+        });
+      }
+    } catch (e) {
+      debugPrint('On-device inference error: $e');
+      if (mounted) {
+        setState(() {
+          _scanError = 'Klasifikasi gagal dijalankan. Silakan coba lagi.';
+          _phase = ScanPhase.result;
+        });
+      }
+    }
   }
 
-  void _startAnalysisTimer() {
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (!mounted || _phase != ScanPhase.analyzing) return;
-      setState(() => _phase = ScanPhase.result);
-    });
+  Future<void> _triggerBackgroundSync() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      // Sinkronisasi butuh sesi login. Tanpa token, hasil scan tetap
+      // tersimpan di antrean lokal sampai pengguna login.
+      if (!api.hasToken) return;
+      final synced = await OfflineSyncManager().syncPending(api);
+      if (synced > 0 && mounted) {
+        debugPrint('Berhasil menyinkronkan $synced scan ke Neon PostgreSQL');
+      }
+    } catch (_) {
+      // Abaikan jika sedang offline di kumbung; akan disinkronkan saat ada internet
+    }
   }
 
   void _reset() {
     setState(() {
       _capturedBytes = null;
       _result = null;
+      _scanError = null;
       _phase = ScanPhase.viewfinder;
       _savedToHistory = false;
     });
   }
 
   void _saveToHistory() {
-    if (!_savedToHistory) {
-      final result = _result ?? MockData.scanResult;
-      final bool treatable = result.severity == ScanSeverity.treatable;
+    final result = _result;
+    if (result == null) return;
 
-      MockData.historyList.insert(
-        0,
-        HistoryItem(
-          id: 'h-scan-${DateTime.now().millisecondsSinceEpoch}',
-          name: '${result.diagnosisName} (${result.scientificName})',
-          badge: treatable ? 'Bisa Diobati' : 'Harus Dibuang',
-          tone: treatable ? 'warning' : 'danger',
-          when: result.scannedAt,
-          rack: result.rack,
-          col: result.column,
-          category: HistorySectionCategory.actionRequired,
-        ),
-      );
+    if (!_savedToHistory) {
+      // Baru masukkan ke antrean sinkronisasi saat pengguna memilih simpan.
+      OfflineSyncManager().recordScan(result);
+      ref.read(historyControllerProvider.notifier).addFromScan(result);
       _savedToHistory = true;
+
+      // Coba trigger sinkronisasi saat petani menekan simpan
+      _triggerBackgroundSync();
     }
 
     widget.onSavedToHistory();
@@ -319,9 +346,17 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       case ScanPhase.analyzing:
         return _AnalyzingOverlay(cameraPreview: cameraPreviewWidget);
       case ScanPhase.result:
+        final result = _result;
+        if (result == null) {
+          return _ScanFailureView(
+            message: _scanError ?? 'Hasil scan tidak tersedia.',
+            onRetry: _reset,
+            onBack: widget.onBack,
+          );
+        }
         return _ResultView(
           cameraPreview: cameraPreviewWidget,
-          result: _result ?? MockData.scanResult,
+          result: result,
           flashOn: _flashOn,
           onToggleFlash: _toggleFlash,
           onClose: _reset,
@@ -367,6 +402,65 @@ class _AnalyzingOverlay extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ScanFailureView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  const _ScanFailureView({
+    required this.message,
+    required this.onRetry,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.primary800,
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.pagePaddingX),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.white,
+                  size: 56,
+                ),
+                const SizedBox(height: AppSpacing.s3),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s5),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Coba Lagi'),
+                ),
+                TextButton(
+                  onPressed: onBack,
+                  child: const Text(
+                    'Kembali ke Beranda',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

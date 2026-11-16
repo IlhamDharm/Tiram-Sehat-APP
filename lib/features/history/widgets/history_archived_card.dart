@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/components/neu_surface.dart';
 import '../../../core/components/status_badge.dart';
-import '../../../mock/mock_data.dart';
+import '../domain/models/history_item.dart';
 
 /// Kartu ringkas untuk bagian Riwayat Terarsip (Tersanitasi / Telah Dibuang)
 class HistoryArchivedCard extends StatelessWidget {

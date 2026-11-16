@@ -83,6 +83,11 @@ Buka Aplikasi
   Tindakan Lanjut
 ```
 
+> **Status integrasi saat ini:** Beranda sudah memanggil backend dan fitur Scan
+> menyimpan hasil ke antrean lokal + riwayat. Buku Panen, Riwayat awal, dan
+> Laporan masih memakai datasource lokal (seed) yang siap diganti implementasi
+> API/SQLite tanpa mengubah widget.
+
 ---
 
 ## Struktur Inti Proyek
@@ -92,60 +97,40 @@ lib/
 ├── main.dart                    # Entry point — ProviderScope + MaterialApp
 │
 ├── core/
-│   ├── theme/
-│   │   ├── tokens.dart          # Design tokens: warna, spacing, radius, dll.
-│   │   └── app_theme.dart       # ThemeData utama aplikasi
-│   ├── components/              # Widget reusable (15 komponen)
-│   │   ├── neu_surface.dart     # Komponen neumorphic raised/inset
-│   │   ├── section_card.dart    # Card section berheader
-│   │   ├── bottom_nav.dart      # Bottom navigation bar kustom
-│   │   ├── app_header.dart      # AppBar kustom
-│   │   ├── metric_tile.dart     # Tile metrik animasi
-│   │   ├── status_badge.dart    # Badge status warna
-│   │   ├── step_list.dart       # Daftar langkah penanganan
-│   │   └── ...                  # Dan komponen lainnya
-│   └── format/
-│       └── format_helper.dart   # Helper format angka & tanggal
+│   ├── components/              # Widget reusable (neu_surface, bottom_nav, dll.)
+│   ├── format/                  # Helper format angka & tanggal
+│   ├── network/                 # ApiClient, ApiException, base URL & token provider
+│   └── theme/                   # tokens.dart + app_theme.dart
 │
 ├── features/
-│   ├── auth/
-│   │   ├── onboarding_screen.dart    # Onboarding multi-langkah
-│   │   ├── onboarding_content.dart   # Konten tiap slide onboarding
-│   │   ├── login_screen.dart         # Halaman login
-│   │   └── widgets/
-│   │       └── onboarding_illustration.dart  # Ilustrasi SVG animasi
+│   ├── auth/                    # Onboarding + login (login masih simulasi)
 │   ├── home/
-│   │   └── home_screen.dart     # Beranda dengan count-up animation
+│   │   ├── data/                # datasource, model, repository
+│   │   └── presentation/        # provider + home_screen
 │   ├── scan/
-│   │   ├── scan_screen.dart     # Kamera scan fullscreen
-│   │   └── widgets/             # Widget hasil scan & langkah penanganan
+│   │   ├── data/services/       # classifier on-device, antrean offline
+│   │   ├── domain/models/       # ScanResult, ScanStep, ScanSeverity
+│   │   └── widgets/             # kamera, input rak, sheet hasil
 │   ├── harvest/
-│   │   └── harvest_screen.dart  # Form pencatatan panen
-│   ├── history/
-│   │   ├── history_screen.dart  # Daftar riwayat diagnosa
-│   │   └── widgets/             # Kartu riwayat (aktif & arsip)
-│   ├── report/
-│   │   └── report_screen.dart   # Laporan produksi & grafik
-│   └── shell/
-│       └── app_shell.dart       # Scaffold utama + bottom nav + routing tab
+│   │   ├── data/                # datasource + repository
+│   │   ├── domain/models/
+│   │   └── presentation/providers/
+│   ├── history/                 # data/ domain/ presentation/ widgets/
+│   ├── report/                  # data/ domain/ presentation/ widgets/
+│   └── shell/app_shell.dart     # Scaffold + bottom nav + state per tab
 │
-├── mock/
-│   └── mock_data.dart           # Data dummy seluruh fitur (dev/prototype)
-│
-assets/
-├── logo.png                     # Logo TiramSehat
-└── Google_Icon_Colored.png      # Ikon Google untuk tombol login
+└── mock/mock_data.dart          # Seed lokal; hanya dipakai datasource
 
-docs/
-└── design/                      # Screenshot & mockup desain UI
-    ├── Login_Page.png
-    └── onboarding.png
-
-test/
-├── login_screen_test.dart
-├── onboarding_screen_test.dart
-└── widget_test.dart
+backend/                         # FastAPI + psycopg + Neon (lihat backend/README.md)
+ml-service/                      # TFLite inference + Gradio
+docs/                            # Arsitektur, kontrak API, ERD, desain
+assets/                          # Logo, ikon, model & label TFLite
+test/                            # Widget test per fitur
 ```
+
+**Pola per fitur:** `data/` (datasource + repository) → `domain/` (model) →
+`presentation/` (provider + screen). Widget tidak boleh mengimpor `mock/`
+secara langsung.
 
 ---
 
@@ -155,10 +140,13 @@ test/
 |---|---|
 | Framework | Flutter 3.x (Dart ≥ 3.13.1) |
 | State Management | [flutter_riverpod](https://riverpod.dev/) `^2.6.1` |
-| Routing | [go_router](https://pub.dev/packages/go_router) `^14.6.1` |
+| Navigasi | `Navigator` + `AppShell` (satu `IndexedStack` per tab, scan fullscreen) |
 | Tipografi | [google_fonts](https://pub.dev/packages/google_fonts) `^6.2.1` — Plus Jakarta Sans |
 | Desain | Neumorphic design system berbasis `NeuSurface` |
 | Ikon | Material Icons (bawaan Flutter) |
+| Backend | FastAPI (Python) + psycopg + Neon PostgreSQL |
+| ML Service | TFLite + FastAPI/Gradio (`ml-service/`) |
+| Media | Cloudinary (signed upload dari backend) |
 | Linting | flutter_lints `^6.0.0` |
 
 ---
@@ -192,6 +180,44 @@ flutter run
 flutter devices          # lihat daftar perangkat
 flutter run -d <device_id>
 ```
+
+### Konfigurasi API
+
+Base URL tidak lagi di-hardcode. Default otomatis:
+
+| Target | Default |
+|---|---|
+| Emulator Android | `http://10.0.2.2:8000` |
+| Desktop / iOS Simulator / Web | `http://localhost:8000` |
+
+Untuk HP fisik atau backend lain, gunakan `--dart-define`:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://192.168.18.8:8000
+```
+
+Token sesi dikelola lewat `authTokenProvider` dan otomatis dipakai `ApiClient`.
+Saat ini layar login masih **simulasi**, sehingga sinkronisasi scan ke backend
+baru berjalan setelah alur autentikasi nyata dihubungkan.
+
+### Menjalankan backend & ML service
+
+```bash
+# Backend FastAPI
+cd backend
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+pip install -r requirements.txt
+copy .env.example .env        # isi DATABASE_URL, JWT_SECRET, Cloudinary
+python run.py
+
+# ML service (opsional, untuk inferensi server-side)
+cd ml-service
+pip install -r requirements.txt
+python app.py                 # http://localhost:7860
+```
+
+> Jangan pernah commit `backend/.env`. File tersebut sudah masuk `.gitignore`.
 
 ---
 

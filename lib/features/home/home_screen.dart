@@ -1,23 +1,26 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/neu_surface.dart';
 import '../../core/components/section_card.dart';
-import '../../mock/mock_data.dart';
+import 'data/models/home_summary.dart';
+import 'presentation/providers/home_provider.dart';
 
 // ─── HomeScreen ──────────────────────────────────────────────────────────────
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   /// Dipanggil saat user menekan "Mulai Scan Kumbung" untuk berpindah ke tab scan.
   final VoidCallback? onGoToScan;
 
   const HomeScreen({super.key, this.onGoToScan});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
+class _HomeScreenState extends ConsumerState<HomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
@@ -33,9 +36,6 @@ class _HomeScreenState extends State<HomeScreen>
       parent: _controller,
       curve: Curves.easeOutCubic,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _controller.forward();
-    });
   }
 
   @override
@@ -44,29 +44,262 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
+  void _startAnimation() {
+    if (_controller.status == AnimationStatus.dismissed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _controller.forward();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.pagePaddingX,
-        AppSpacing.s2,
-        AppSpacing.pagePaddingX,
-        110,
+    final summaryAsync = ref.watch(homeSummaryProvider);
+
+    return summaryAsync.when(
+      loading: () => const _HomeShimmerLoading(),
+      error: (error, stack) => _HomeErrorState(
+        error: error.toString(),
+        onRetry: () => ref.invalidate(homeSummaryProvider),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _HomeGreetingHeader(),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _IncomeCard(animation: _animation),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _BaglogCard(animation: _animation),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _SelfCheckCard(
-            animation: _animation,
-            onGoToScan: widget.onGoToScan,
+      data: (summary) {
+        _startAnimation();
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pagePaddingX,
+            AppSpacing.s2,
+            AppSpacing.pagePaddingX,
+            110,
           ),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _HomeGreetingHeader(),
+              const SizedBox(height: AppSpacing.sectionGap),
+              _IncomeCard(animation: _animation, summary: summary),
+              const SizedBox(height: AppSpacing.sectionGap),
+              _BaglogCard(animation: _animation, summary: summary),
+              const SizedBox(height: AppSpacing.sectionGap),
+              _SelfCheckCard(
+                animation: _animation,
+                summary: summary,
+                onGoToScan: widget.onGoToScan,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Shimmer Loading State ───────────────────────────────────────────────────
+
+class _HomeShimmerLoading extends StatefulWidget {
+  const _HomeShimmerLoading();
+
+  @override
+  State<_HomeShimmerLoading> createState() => _HomeShimmerLoadingState();
+}
+
+class _HomeShimmerLoadingState extends State<_HomeShimmerLoading>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _shimmerController;
+
+  @override
+  void initState() {
+    super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _shimmerController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, _) {
+        final shimmerOpacity = (0.3 + 0.4 * (0.5 + 0.5 * math.cos(_shimmerController.value * 2 * math.pi))).clamp(0.0, 1.0);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.pagePaddingX,
+            AppSpacing.s2,
+            AppSpacing.pagePaddingX,
+            110,
+          ),
+          child: Opacity(
+            opacity: shimmerOpacity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header skeleton
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 14,
+                            width: 180,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE5EAE4),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 26,
+                            width: 140,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE5EAE4),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5EAE4),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sectionGap),
+                // Income card skeleton
+                _buildSkeletonCard(height: 200),
+                const SizedBox(height: AppSpacing.sectionGap),
+                // Baglog card skeleton
+                _buildSkeletonCard(height: 300),
+                const SizedBox(height: AppSpacing.sectionGap),
+                // Self check card skeleton
+                _buildSkeletonCard(height: 150),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSkeletonCard({required double height}) {
+    return NeuSurface(
+      variant: NeuVariant.raised,
+      radius: AppRadius.card,
+      padding: const EdgeInsets.all(AppSpacing.s4),
+      child: Container(
+        height: height,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE5EAE4).withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(AppRadius.tile),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Error State ─────────────────────────────────────────────────────────────
+
+class _HomeErrorState extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+
+  const _HomeErrorState({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.pagePaddingX),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            NeuSurface(
+              variant: NeuVariant.raised,
+              radius: 24,
+              child: Container(
+                width: 72,
+                height: 72,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.cloud_off_rounded,
+                  color: AppColors.danger600,
+                  size: 36,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Gagal memuat data',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textSecondary,
+              ),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 24),
+            NeuSurface(
+              variant: NeuVariant.raised,
+              radius: AppRadius.tile,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.tile),
+                  onTap: onRetry,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.refresh_rounded,
+                          color: AppColors.primary800,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Coba Lagi',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -149,7 +382,8 @@ class _CountUpText extends AnimatedWidget {
 
 class _IncomeCard extends StatelessWidget {
   final Animation<double> animation;
-  const _IncomeCard({required this.animation});
+  final HomeSummary summary;
+  const _IncomeCard({required this.animation, required this.summary});
 
   // Format ribuan sederhana tanpa library external
   static String _rupiah(double v) {
@@ -162,10 +396,25 @@ class _IncomeCard extends StatelessWidget {
     return buf.toString();
   }
 
+  String _formatHarvestDate() {
+    if (summary.recentHarvests.isNotEmpty) {
+      final dt = summary.recentHarvests.first.harvestedAt;
+      const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+        'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+      ];
+      final day = days[dt.weekday - 1];
+      final month = months[dt.month - 1];
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      return '$day, ${dt.day} $month ${dt.year} - $hour:$minute WIB';
+    }
+    return '-';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final harvest = MockData.harvestLast;
-
     return SectionCard(
       icon: Icons.payments_outlined,
       title: 'Estimasi Pendapatan Panen',
@@ -181,14 +430,43 @@ class _IncomeCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'ESTIMASI PANEN HARI INI',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.04 * 11,
-                          color: AppColors.textMuted,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'ESTIMASI PANEN HARI INI',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.04 * 11,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                          ),
+                          if (summary.deltaPct != 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: summary.deltaPct > 0
+                                    ? const Color(0xFFDDEBDC)
+                                    : const Color(0xFFF8DADA),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${summary.deltaPct > 0 ? '↑' : '↓'}${summary.deltaPct.abs().toStringAsFixed(0)}%',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: summary.deltaPct > 0
+                                      ? AppColors.primary800
+                                      : AppColors.danger600,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       FittedBox(
@@ -196,7 +474,7 @@ class _IncomeCard extends StatelessWidget {
                         alignment: Alignment.centerLeft,
                         child: _CountUpText(
                           animation: animation,
-                          target: harvest.grossIncome.toDouble(),
+                          target: summary.todayIncome.toDouble(),
                           formatter: _rupiah,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 34,
@@ -272,7 +550,7 @@ class _IncomeCard extends StatelessWidget {
                           children: [
                             _CountUpText(
                               animation: animation,
-                              target: harvest.weightKg,
+                              target: summary.todayKg,
                               formatter: (v) => v.toStringAsFixed(1),
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 22,
@@ -328,7 +606,7 @@ class _IncomeCard extends StatelessWidget {
                           children: [
                             _CountUpText(
                               animation: animation,
-                              target: harvest.pricePerKg.toDouble(),
+                              target: summary.pricePerKg.toDouble(),
                               formatter: _rupiah,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 18,
@@ -383,7 +661,7 @@ class _IncomeCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      harvest.date,
+                      _formatHarvestDate(),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -405,7 +683,8 @@ class _IncomeCard extends StatelessWidget {
 
 class _BaglogCard extends StatelessWidget {
   final Animation<double> animation;
-  const _BaglogCard({required this.animation});
+  final HomeSummary summary;
+  const _BaglogCard({required this.animation, required this.summary});
 
   static String _fmtInt(double v) {
     final s = v.toInt().toString();
@@ -419,7 +698,11 @@ class _BaglogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cycle = MockData.cycle;
+    final total = summary.activeBaglogs;
+    final healthy = summary.healthyBaglogs;
+    final treatable = summary.treatableBaglogs;
+    final discarded = summary.discardedBaglogs;
+    final healthRatio = summary.healthRatio;
 
     return SectionCard(
       icon: Icons.inventory_2_outlined,
@@ -455,7 +738,7 @@ class _BaglogCard extends StatelessWidget {
                           children: [
                             _CountUpText(
                               animation: animation,
-                              target: cycle.total.toDouble(),
+                              target: total.toDouble(),
                               formatter: _fmtInt,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 32,
@@ -502,13 +785,13 @@ class _BaglogCard extends StatelessWidget {
                 child: _CycleMetricTile(
                   animation: animation,
                   label: 'Sehat Produktif',
-                  target: cycle.healthy.toDouble(),
+                  target: healthy.toDouble(),
                   unit: 'baglog',
                   valueColor: AppColors.primary800,
                   badgeIcon: Icons.check_circle_rounded,
                   badgeColor: const Color(0xFFDDEBDC),
                   iconColor: AppColors.primary800,
-                  progress: cycle.healthy / cycle.total,
+                  progress: total > 0 ? healthy / total : 0,
                   progressBarColor: AppColors.primary800,
                   formatter: _fmtInt,
                 ),
@@ -518,13 +801,13 @@ class _BaglogCard extends StatelessWidget {
                 child: _CycleMetricTile(
                   animation: animation,
                   label: 'Bisa Diobati',
-                  target: cycle.treatable.toDouble(),
+                  target: treatable.toDouble(),
                   unit: 'baglog',
                   valueColor: AppColors.warning500,
                   badgeIcon: Icons.healing_rounded,
                   badgeColor: const Color(0xFFFCEBCB),
                   iconColor: AppColors.warning500,
-                  progress: cycle.treatable / cycle.total,
+                  progress: total > 0 ? treatable / total : 0,
                   progressBarColor: AppColors.warning500,
                   formatter: _fmtInt,
                 ),
@@ -538,13 +821,13 @@ class _BaglogCard extends StatelessWidget {
                 child: _CycleMetricTile(
                   animation: animation,
                   label: 'Afkir / Dibuang',
-                  target: cycle.discarded.toDouble(),
+                  target: discarded.toDouble(),
                   unit: 'baglog',
                   valueColor: AppColors.danger600,
                   badgeIcon: Icons.delete_outline_rounded,
                   badgeColor: const Color(0xFFF8DADA),
                   iconColor: AppColors.danger600,
-                  progress: cycle.discarded / cycle.total,
+                  progress: total > 0 ? discarded / total : 0,
                   progressBarColor: AppColors.danger600,
                   formatter: _fmtInt,
                 ),
@@ -554,13 +837,13 @@ class _BaglogCard extends StatelessWidget {
                 child: _CycleMetricTile(
                   animation: animation,
                   label: 'Tingkat Sehat',
-                  target: cycle.healthRatio * 100,
+                  target: healthRatio * 100,
                   unit: 'rasio',
                   valueColor: AppColors.primary800,
                   badgeIcon: Icons.query_stats_rounded,
                   badgeColor: const Color(0xFFDDEBDC),
                   iconColor: AppColors.primary800,
-                  progress: cycle.healthRatio,
+                  progress: healthRatio,
                   progressBarColor: AppColors.primary800,
                   formatter: (v) => '${v.toStringAsFixed(1)}%',
                 ),
@@ -702,20 +985,26 @@ class _CycleMetricTile extends StatelessWidget {
 
 class _SelfCheckCard extends StatelessWidget {
   final Animation<double> animation;
+  final HomeSummary summary;
   final VoidCallback? onGoToScan;
 
-  const _SelfCheckCard({required this.animation, this.onGoToScan});
+  const _SelfCheckCard({
+    required this.animation,
+    required this.summary,
+    this.onGoToScan,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final check = MockData.selfCheck;
-    final progress = check.checked / check.target;
+    final checked = summary.selfCheck.checked;
+    final target = summary.selfCheck.target;
+    final progress = target > 0 ? checked / target : 0.0;
 
     return SectionCard(
       icon: Icons.checklist_rounded,
       title: 'Pengecekan Mandiri Hari Ini',
       trailing: Text(
-        'Target: ${check.target}',
+        'Target: $target',
         style: GoogleFonts.plusJakartaSans(
           fontSize: 13,
           fontWeight: FontWeight.w700,
@@ -737,9 +1026,9 @@ class _SelfCheckCard extends StatelessWidget {
                     AnimatedBuilder(
                       animation: animation,
                       builder: (context, _) {
-                        final cur = (animation.value * check.checked).toInt();
+                        final cur = (animation.value * checked).toInt();
                         return Text(
-                          '$cur dari ${check.target} baglog dicek',
+                          '$cur dari $target baglog dicek',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,

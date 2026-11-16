@@ -18,28 +18,57 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  BottomNavTab _activeTab = BottomNavTab.home;
+  static const _stackTabs = <BottomNavTab>[
+    BottomNavTab.home,
+    BottomNavTab.harvest,
+    BottomNavTab.report,
+    BottomNavTab.history,
+  ];
 
-  Widget _buildBody() {
-    switch (_activeTab) {
+  BottomNavTab _activeTab = BottomNavTab.home;
+  final Set<BottomNavTab> _visitedTabs = {BottomNavTab.home};
+
+  void _selectTab(BottomNavTab tab) {
+    setState(() {
+      _activeTab = tab;
+      _visitedTabs.add(tab);
+    });
+  }
+
+  Widget _screenFor(BottomNavTab tab) {
+    switch (tab) {
       case BottomNavTab.home:
-        return HomeScreen(
-          onGoToScan: () => setState(() => _activeTab = BottomNavTab.scan),
-        );
+        return HomeScreen(onGoToScan: () => _selectTab(BottomNavTab.scan));
       case BottomNavTab.harvest:
-        return HarvestScreen(
-          onSaved: () => setState(() => _activeTab = BottomNavTab.home),
-        );
-      case BottomNavTab.scan:
-        return ScanScreen(
-          onBack: () => setState(() => _activeTab = BottomNavTab.home),
-          onSavedToHistory: () => setState(() => _activeTab = BottomNavTab.history),
-        );
+        return HarvestScreen(onSaved: () => _selectTab(BottomNavTab.home));
       case BottomNavTab.report:
         return const ReportScreen();
       case BottomNavTab.history:
         return const HistoryScreen();
+      case BottomNavTab.scan:
+        return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildBody() {
+    // Scan bersifat fullscreen dan tidak ikut disimpan di IndexedStack agar
+    // kamera benar-benar dilepas saat pengguna keluar dari layar scan.
+    if (_activeTab == BottomNavTab.scan) {
+      return ScanScreen(
+        onBack: () => _selectTab(BottomNavTab.home),
+        onSavedToHistory: () => _selectTab(BottomNavTab.history),
+      );
+    }
+
+    return IndexedStack(
+      index: _stackTabs.indexOf(_activeTab),
+      children: [
+        for (final tab in _stackTabs)
+          _visitedTabs.contains(tab)
+              ? _screenFor(tab)
+              : const SizedBox.shrink(),
+      ],
+    );
   }
 
   @override
@@ -71,7 +100,7 @@ class _AppShellState extends State<AppShell> {
           ? null
           : BottomNav(
               active: _activeTab,
-              onChange: (tab) => setState(() => _activeTab = tab),
+              onChange: (tab) => _selectTab(tab),
             ),
     );
   }

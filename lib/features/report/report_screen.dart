@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/neu_surface.dart';
@@ -6,19 +7,20 @@ import '../../core/components/section_card.dart';
 import '../../core/components/segmented_tabs.dart';
 import '../../core/components/action_button.dart';
 import '../../core/format/format_helper.dart';
-import '../../mock/mock_data.dart';
+import 'domain/models/report_data.dart';
+import 'presentation/providers/report_provider.dart';
 import 'widgets/trend_chart.dart';
 
 /// Layar Evaluasi & Laporan (Anggota E)
 /// Sesuai dengan spesifikasi DESIGN Tiram-Sehat.md §8.7 & §9.2 dan screenshot laporan.png
-class ReportScreen extends StatefulWidget {
+class ReportScreen extends ConsumerStatefulWidget {
   const ReportScreen({super.key});
 
   @override
-  State<ReportScreen> createState() => _ReportScreenState();
+  ConsumerState<ReportScreen> createState() => _ReportScreenState();
 }
 
-class _ReportScreenState extends State<ReportScreen> {
+class _ReportScreenState extends ConsumerState<ReportScreen> {
   int _selectedTabIndex = 0;
   static const _tabs = ['Minggu Ini', 'Bulan Ini', 'Tahun Ini'];
 
@@ -43,7 +45,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const report = MockData.report;
+    final report = ref.watch(reportProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(

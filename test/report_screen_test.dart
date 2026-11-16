@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tiram_sehat/features/report/report_screen.dart';
 
 void main() {
   testWidgets('ReportScreen renders title, segmented tabs, and all report cards', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: ReportScreen(),
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: ReportScreen(),
+          ),
         ),
       ),
     );

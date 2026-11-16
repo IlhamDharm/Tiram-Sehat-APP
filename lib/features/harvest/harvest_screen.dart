@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/components/action_button.dart';
@@ -10,27 +11,25 @@ import '../../core/components/segmented_tabs.dart';
 import '../../core/components/status_badge.dart';
 import '../../core/format/format_helper.dart';
 import '../../core/theme/tokens.dart';
-import '../../mock/mock_data.dart';
+import 'domain/models/harvest_entry.dart';
+import 'presentation/providers/harvest_provider.dart';
 
 /// Buku Panen — DESIGN.md §8.2 (Anggota A) + Riwayat Panen & Penjualan.
 /// AppHeader disediakan AppShell; layar ini hanya konten scroll tab.
-class HarvestScreen extends StatefulWidget {
+class HarvestScreen extends ConsumerStatefulWidget {
   const HarvestScreen({super.key, this.onSaved});
 
   final VoidCallback? onSaved;
 
   @override
-  State<HarvestScreen> createState() => _HarvestScreenState();
+  ConsumerState<HarvestScreen> createState() => _HarvestScreenState();
 }
 
-class _HarvestScreenState extends State<HarvestScreen> {
+class _HarvestScreenState extends ConsumerState<HarvestScreen> {
   static const _quickPrices = <int>[14000, 15000, 16000];
-  static const _noteExample =
-      'Panen petik ke-3 kumbung selatan, kualitas baglog prima tanpa bercak.';
   static const _tabs = ['Catat Panen', 'Riwayat & Kas'];
 
   int _selectedTab = 0;
-  late List<HarvestEntry> _historyList;
 
   late DateTime _date;
   late double _weight;
@@ -40,11 +39,10 @@ class _HarvestScreenState extends State<HarvestScreen> {
   @override
   void initState() {
     super.initState();
-    _date = DateTime(2024, 10, 24);
-    _weight = MockData.harvestLast.weightKg;
-    _price = MockData.harvestLast.pricePerKg;
-    _note = TextEditingController(text: _noteExample);
-    _historyList = List<HarvestEntry>.from(MockData.harvestHistory);
+    _date = DateTime.now();
+    _weight = 18.5;
+    _price = 15000;
+    _note = TextEditingController();
   }
 
   @override
@@ -57,15 +55,18 @@ class _HarvestScreenState extends State<HarvestScreen> {
 
   bool get _isValid => _weight > 0;
 
-  double get _totalHistoryWeight =>
-      _historyList.fold(0.0, (acc, item) => acc + item.weightKg);
+  double _totalHistoryWeight(List<HarvestEntry> history) =>
+      history.fold(0.0, (acc, item) => acc + item.weightKg);
 
-  int get _totalHistoryIncome =>
-      _historyList.fold(0, (acc, item) => acc + item.grossIncome);
+  int _totalHistoryIncome(List<HarvestEntry> history) =>
+      history.fold(0, (acc, item) => acc + item.grossIncome);
 
-  int get _avgHistoryPrice => _totalHistoryWeight > 0
-      ? (_totalHistoryIncome / _totalHistoryWeight).round()
-      : 0;
+  int _avgHistoryPrice(List<HarvestEntry> history) {
+    final totalWeight = _totalHistoryWeight(history);
+    return totalWeight > 0
+        ? (_totalHistoryIncome(history) / totalWeight).round()
+        : 0;
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -89,8 +90,9 @@ class _HarvestScreenState extends State<HarvestScreen> {
       note: _note.text.trim().isNotEmpty ? _note.text.trim() : null,
     );
 
+    ref.read(harvestControllerProvider.notifier).add(entry);
+
     setState(() {
-      _historyList.insert(0, entry);
       _selectedTab = 1;
     });
 
@@ -115,6 +117,8 @@ class _HarvestScreenState extends State<HarvestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final history = ref.watch(harvestControllerProvider);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pagePaddingX,
@@ -159,7 +163,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
             onChange: (index) => setState(() => _selectedTab = index),
           ),
           const SizedBox(height: AppSpacing.sectionGap),
-          if (_selectedTab == 0) _buildFormTab() else _buildHistoryTab(),
+          if (_selectedTab == 0) _buildFormTab() else _buildHistoryTab(history),
         ],
       ),
     );
@@ -211,7 +215,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
     );
   }
 
-  Widget _buildHistoryTab() {
+  Widget _buildHistoryTab(List<HarvestEntry> history) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -264,7 +268,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                          _totalHistoryWeight
+                          _totalHistoryWeight(history)
                               .toStringAsFixed(1)
                               .replaceAll('.', ','),
                           style: GoogleFonts.plusJakartaSans(
@@ -331,7 +335,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      FormatHelper.rupiah(_totalHistoryIncome),
+                      FormatHelper.rupiah(_totalHistoryIncome(history)),
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -361,7 +365,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
               const SizedBox(width: AppSpacing.s2),
               Expanded(
                 child: Text(
-                  '${_historyList.length} transaksi tercatat • Rata-rata: ${FormatHelper.rupiahPerKg(_avgHistoryPrice)}',
+                  '${history.length} transaksi tercatat • Rata-rata: ${FormatHelper.rupiahPerKg(_avgHistoryPrice(history))}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -387,7 +391,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
               ),
             ),
             Text(
-              '${_historyList.length} Entri',
+              '${history.length} Entri',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -399,7 +403,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
         const SizedBox(height: AppSpacing.s3),
 
         // List item riwayat
-        if (_historyList.isEmpty)
+        if (history.isEmpty)
           NeuSurface(
             variant: NeuVariant.raised,
             radius: AppRadius.card,
@@ -434,7 +438,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
             ),
           )
         else
-          ..._historyList.map((entry) => _buildHistoryCard(entry)),
+          ...history.map((entry) => _buildHistoryCard(entry)),
 
         const SizedBox(height: AppSpacing.s4),
         Row(
@@ -447,7 +451,7 @@ class _HarvestScreenState extends State<HarvestScreen> {
             const SizedBox(width: AppSpacing.s2),
             Expanded(
               child: Text(
-                'Semua data panen & penjualan tersimpan permanen di memori lokal HP',
+                'Data panen tersimpan di sesi ini dan siap disinkronkan ke server',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w400,
