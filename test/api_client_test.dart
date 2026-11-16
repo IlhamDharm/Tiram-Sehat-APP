@@ -59,5 +59,24 @@ void main() {
 
       expect(res.error?.code, 'http_502');
     });
+
+    test('otomatis fallback ke URL kedua jika URL utama gagal koneksi', () async {
+      final client = ApiClient(
+        baseUrl: 'http://127.0.0.1:8000',
+        fallbackBaseUrls: const ['http://10.0.2.2:8000'],
+        client: MockClient((request) async {
+          if (request.url.host == '127.0.0.1') {
+            throw http.ClientException('Connection refused', request.url);
+          }
+          return http.Response('{"data":{"ok":true}}', 200);
+        }),
+      );
+
+      final res = await client.get('/health');
+
+      expect(res.error, isNull);
+      expect((res.data as Map<String, dynamic>)['ok'], isTrue);
+      expect(client.activeBaseUrl, 'http://10.0.2.2:8000');
+    });
   });
 }

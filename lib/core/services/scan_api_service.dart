@@ -46,7 +46,13 @@ class ScanApiService {
     }
 
     // 1. Upload gambar ke Cloudinary lewat endpoint backend terautentikasi
-    final uploadUri = Uri.parse('${api.baseUrl}/api/v1/uploads/image');
+    // Pastikan activeBaseUrl sudah teruji sebelum upload multipart.
+    try {
+      await api.get('/health');
+    } catch (_) {
+      // Tetap lanjut memakai activeBaseUrl / baseUrl bila /health tidak terjangkau.
+    }
+    final uploadUri = Uri.parse('${api.activeBaseUrl}/api/v1/uploads/image');
     final request = http.MultipartRequest('POST', uploadUri);
     request.headers['Authorization'] = 'Bearer ${api.accessToken}';
     request.fields['upload_type'] = 'scan';
