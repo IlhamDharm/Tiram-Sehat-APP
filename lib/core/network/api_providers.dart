@@ -5,7 +5,7 @@ import 'api_client.dart';
 /// Base URL backend FastAPI.
 ///
 /// Override saat build/run, misalnya untuk HP fisik:
-/// `flutter run --dart-define=API_BASE_URL=http://192.168.18.8:8000`
+/// `flutter run --dart-define=API_BASE_URL=http://192.168.1.212:8000`
 const String _configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
 
 String get kBackendBaseUrl {
@@ -22,7 +22,11 @@ String get kBackendBaseUrl {
 List<String> get kBackendFallbackUrls {
   if (_configuredBaseUrl.isNotEmpty || kIsWeb) return const [];
   if (defaultTargetPlatform == TargetPlatform.android) {
-    return const ['http://10.0.2.2:8000'];
+    return const [
+      'http://10.0.2.2:8000',
+      'http://192.168.1.212:8000',
+      'http://localhost:8000',
+    ];
   }
   return const [];
 }

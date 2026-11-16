@@ -54,7 +54,7 @@ async def get_home_summary_data(
     ),
     recent AS (
       SELECT id::text,
-             to_char(harvested_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS harvested_at,
+             to_char(harvested_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD"T"HH24:MI:SS+07:00') AS harvested_at,
              weight_kg::float8 AS weight_kg,
              gross_income
       FROM harvest_entries

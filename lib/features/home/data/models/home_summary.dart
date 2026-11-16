@@ -12,11 +12,13 @@ class RecentHarvest {
   });
 
   factory RecentHarvest.fromJson(Map<String, dynamic> json) {
+    final rawStr = json['harvested_at'] as String? ?? '';
+    final parsed = DateTime.tryParse(rawStr) ?? DateTime.now();
     return RecentHarvest(
-      id: json['id'] as String,
-      harvestedAt: DateTime.parse(json['harvested_at'] as String),
-      weightKg: (json['weight_kg'] as num).toDouble(),
-      grossIncome: (json['gross_income'] as num).toInt(),
+      id: json['id'] as String? ?? '',
+      harvestedAt: parsed.toLocal(),
+      weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 0.0,
+      grossIncome: (json['gross_income'] as num?)?.toInt() ?? 0,
     );
   }
 }

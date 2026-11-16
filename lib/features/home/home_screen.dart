@@ -398,7 +398,7 @@ class _IncomeCard extends StatelessWidget {
 
   String _formatHarvestDate() {
     if (summary.recentHarvests.isNotEmpty) {
-      final dt = summary.recentHarvests.first.harvestedAt;
+      final dt = summary.recentHarvests.first.harvestedAt.toLocal();
       const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
       const months = [
         'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
