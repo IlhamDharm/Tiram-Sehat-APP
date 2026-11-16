@@ -12,18 +12,6 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
-# Zona waktu WIB (UTC+7)
-WIB = timezone(timedelta(hours=7))
-
-def format_wib_iso(dt):
-    if dt is None:
-        return None
-    if isinstance(dt, datetime):
-        if dt.tzinfo is None:
-            # Timestamp PostgreSQL sudah dalam zona waktu WIB
-            return dt.strftime("%Y-%m-%dT%H:%M:%S+07:00")
-        return dt.astimezone(WIB).isoformat()
-    return str(dt)
 
 # Mencegah WinError 64 / ProactorEventLoop crash di Windows
 if sys.platform == "win32":
