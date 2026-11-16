@@ -333,15 +333,31 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       imageUrl: activeResult.imageUrl,
     );
 
-    if (_capturedBytes != null && _capturedBytes!.isNotEmpty) {
+    final api = ref.read(apiClientProvider);
+    final severityStr = switch (activeResult.severity) {
+      ScanSeverity.healthy => 'healthy',
+      ScanSeverity.mustDiscard => 'must_discard',
+      ScanSeverity.treatable => 'treatable',
+    };
+
+    var uploadedToServer = false;
+    if (api.hasToken && _capturedBytes != null && _capturedBytes!.isNotEmpty) {
       try {
         final uploaded = await ScanApiService.instance.uploadScan(
           bytes: _capturedBytes!,
+          api: api,
           filename: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
           rack: formattedRack,
           column: column,
+          diagnosisName: activeResult.diagnosisName,
+          scientificName: activeResult.scientificName,
+          confidenceScore: activeResult.confidence,
+          infectionLocation: activeResult.infectionLocation,
+          severity: severityStr,
+          steps: activeResult.steps,
         );
         finalResult = uploaded;
+        uploadedToServer = true;
       } catch (e) {
         debugPrint('Save to history upload error: $e');
       }
@@ -349,11 +365,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
     if (!mounted) return;
 
-    // Simpan ke antrean offline + riwayat bersama. Upload Cloudinary (bila
-    // berhasil) hanya melengkapi imageUrl pada hasil yang sama.
-    OfflineSyncManager().recordScan(finalResult);
+    if (!uploadedToServer) {
+      OfflineSyncManager().recordScan(finalResult);
+      _triggerBackgroundSync();
+    }
     ref.read(historyControllerProvider.notifier).addFromScan(finalResult);
-    _triggerBackgroundSync();
 
     if (mounted) {
       final bool isCloudSaved =

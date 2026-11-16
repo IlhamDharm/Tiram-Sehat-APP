@@ -4,12 +4,12 @@ import '../theme/tokens.dart';
 
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String? statusText;
-  final VoidCallback? onProfilePress;
+  final VoidCallback? onLogoutPress;
 
   const AppHeader({
     super.key,
     this.statusText,
-    this.onProfilePress,
+    this.onLogoutPress,
   });
 
   @override
@@ -90,19 +90,22 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                   ],
                 ),
               ),
-              GestureDetector(
-                onTap: onProfilePress,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary800,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    color: AppColors.textOnPrimary,
-                    size: 22,
+              Tooltip(
+                message: 'Keluar',
+                child: GestureDetector(
+                  onTap: onLogoutPress,
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary800,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.logout_rounded,
+                      color: AppColors.textOnPrimary,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),

@@ -112,7 +112,7 @@ class OfflineSyncManager extends ChangeNotifier {
           'scientific_name': item.scientificName,
           'confidence': item.confidence,
           'severity': item.severity,
-          'scan_method': 'on_device_tflite',
+          'scan_method': 'camera',
           'scanned_at': item.scannedAt.toIso8601String(),
         };
 

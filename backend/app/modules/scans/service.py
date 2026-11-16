@@ -23,39 +23,118 @@ from app.modules.scans.schemas import CreateActionRequest, CreateScanRequest, Up
 logger = logging.getLogger(__name__)
 
 
-async def _resolve_rak_id(conn, raw_id: str) -> str:
-    """Resolve raw rak identifier (either UUID or code like 'B-04') to a valid UUID."""
-    try:
-        uuid.UUID(str(raw_id))
-        return str(raw_id)
-    except (ValueError, AttributeError):
-        pass
+def _clean_rak_code(raw_id: str) -> str:
+    cleaned = str(raw_id or "").strip()
+    for prefix in ("Rak Kumbung ", "rak kumbung ", "Rak-", "rak-", "Rak ", "rak "):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+            break
+    return cleaned.upper() or "A-01"
 
-    # Lookup by code (e.g. 'B-04')
+
+async def _get_or_create_kumbung_id(conn, user_id: str | None) -> str:
+    if user_id:
+        cur = await conn.execute(
+            """
+            SELECT kumbung_id FROM user_kumbung_assignments
+            WHERE user_id = %(uid)s::uuid
+            ORDER BY is_primary DESC, assigned_at ASC
+            LIMIT 1
+            """,
+            {"uid": user_id},
+        )
+        row = await cur.fetchone()
+        if row:
+            return str(row["kumbung_id"])
+
     cur = await conn.execute(
-        "SELECT id FROM raks WHERE code = %(code)s LIMIT 1",
-        {"code": str(raw_id).strip()},
+        "SELECT id FROM kumbungs WHERE is_active = TRUE ORDER BY code ASC LIMIT 1"
     )
     row = await cur.fetchone()
     if row:
         return str(row["id"])
 
-    # Fallback to first available rak in database
-    cur = await conn.execute("SELECT id FROM raks ORDER BY code LIMIT 1")
+    cur = await conn.execute(
+        """
+        INSERT INTO kumbungs (code, name, is_active)
+        VALUES ('A', 'Kumbung Blok A', TRUE)
+        ON CONFLICT (code) DO UPDATE SET is_active = TRUE
+        RETURNING id
+        """
+    )
+    row = await cur.fetchone()
+    assert row is not None
+    return str(row["id"])
+
+
+async def _resolve_rak(conn, raw_id: str, user_id: str | None = None) -> tuple[str, str]:
+    """Resolve raw rak identifier (UUID or code like 'B-04' / 'Rak Kumbung A') to a valid (rak_id, rak_code) in DB."""
+    try:
+        uuid.UUID(str(raw_id))
+        cur = await conn.execute(
+            "SELECT id, code FROM raks WHERE id = %(id)s::uuid LIMIT 1",
+            {"id": str(raw_id)},
+        )
+        row = await cur.fetchone()
+        if row:
+            return str(row["id"]), str(row["code"])
+    except (ValueError, AttributeError):
+        pass
+
+    code = _clean_rak_code(raw_id)
+
+    # Lookup exact code (e.g. 'B-04' or 'A'), or block letter (e.g. 'B')
+    cur = await conn.execute(
+        """
+        SELECT id, code FROM raks
+        WHERE UPPER(code) = UPPER(%(code)s)
+           OR (LENGTH(%(code)s) = 1 AND UPPER(block) = UPPER(%(code)s))
+        ORDER BY code ASC
+        LIMIT 1
+        """,
+        {"code": code},
+    )
     row = await cur.fetchone()
     if row:
-        return str(row["id"])
+        return str(row["id"]), str(row["code"])
 
-    return "b0000000-0000-0000-0000-000000000002"
+    # Auto-create missing rak under user's / active kumbung so FK never fails
+    kumbung_id = await _get_or_create_kumbung_id(conn, user_id)
+    block = code[0] if code and code[0].isalpha() else "A"
+    cur = await conn.execute(
+        """
+        INSERT INTO raks (kumbung_id, code, block, column_count, is_active)
+        VALUES (%(kid)s::uuid, %(code)s, %(block)s, 8, TRUE)
+        ON CONFLICT (kumbung_id, code) DO UPDATE SET is_active = TRUE
+        RETURNING id, code
+        """,
+        {"kid": kumbung_id, "code": code, "block": block},
+    )
+    row = await cur.fetchone()
+    assert row is not None
+    return str(row["id"]), str(row["code"])
+
+
+def _normalize_scan_method(method: str | None) -> str:
+    if (method or "").strip().lower() == "manual":
+        return "manual"
+    return "camera"
+
+
+def _normalize_confidence(value: float | None) -> float | None:
+    if value is None:
+        return None
+    normalized = value / 100.0 if value > 1.0 else value
+    return max(0.0, min(1.0, normalized))
 
 
 async def create_scan(payload: CreateScanRequest, user_id: str, background_tasks: BackgroundTasks | None = None) -> dict:
-    """Create a scan record. If on-device inference is already completed, save directly as completed."""
+    """Create a scan record. If on-device/manual result is provided, save directly as completed."""
     thumbnail_url = payload.image_thumbnail_url
     if not thumbnail_url and payload.image_public_id:
         thumbnail_url = build_thumbnail_url(payload.image_public_id)
 
-    # 1. Cek apakah inferensi sudah dilakukan on-device oleh Flutter
+    # 1. Cek apakah inferensi sudah dilakukan on-device / input manual
     on_device_completed = bool(payload.diagnosis_name or payload.ml_label)
 
     disease = None
@@ -70,14 +149,24 @@ async def create_scan(payload: CreateScanRequest, user_id: str, background_tasks
 
     disease_id = str(disease["id"]) if disease else payload.disease_id
     diagnosis_name = disease["name"] if disease else (payload.diagnosis_name or "Pending")
-    scientific_name = disease.get("scientific_name") if disease else payload.scientific_name
-    location_hint = disease.get("location_hint") if disease else payload.infection_location
+    scientific_name = (
+        payload.scientific_name
+        if payload.scientific_name
+        else (disease.get("scientific_name") if disease else None)
+    )
+    location_hint = (
+        payload.infection_location
+        if payload.infection_location
+        else (disease.get("location_hint") if disease else None)
+    )
 
     is_healthy = bool(disease and disease.get("is_healthy")) or payload.severity == "healthy"
     severity = "healthy" if is_healthy else (payload.severity or (disease.get("default_severity") if disease else "treatable"))
-    status = "archived" if is_healthy else "action_required"
+    status = payload.status or ("archived" if is_healthy else "action_required")
 
     inference_status = "completed" if on_device_completed else "pending"
+    scan_method = _normalize_scan_method(payload.scan_method)
+    confidence = _normalize_confidence(payload.confidence)
 
     insert_data = {
         "user_id": user_id,
@@ -87,31 +176,48 @@ async def create_scan(payload: CreateScanRequest, user_id: str, background_tasks
         "disease_id": disease_id,
         "diagnosis_name": diagnosis_name,
         "scientific_name": scientific_name,
-        "confidence": payload.confidence,
+        "confidence": confidence,
         "infection_location": location_hint,
         "severity": severity,
-        "scan_method": payload.scan_method or "on_device_tflite",
+        "scan_method": scan_method,
         "image_public_id": payload.image_public_id,
         "image_url": payload.image_url,
         "image_version": payload.image_version,
         "image_thumbnail_url": thumbnail_url,
         "status": status,
+        "status_note": payload.status_note,
+        "status_tag": payload.status_tag,
         "scanned_at": payload.scanned_at or datetime.now(timezone.utc).isoformat(),
         "inference_status": inference_status,
     }
 
+    resolved_rak_code = payload.rak_id
+
     async def _insert(conn):
-        resolved_rak_id = await _resolve_rak_id(conn, payload.rak_id)
+        nonlocal resolved_rak_code
+        resolved_rak_id, resolved_rak_code = await _resolve_rak(
+            conn, payload.rak_id, user_id=user_id
+        )
         insert_data["rak_id"] = resolved_rak_id
         created = await scans_repo.create_scan(conn, insert_data)
-        # Jika ada disease dan inferensi sudah selesai, salin langkah SOP
-        if created and disease_id and not is_healthy:
-            await scan_steps_repo.copy_disease_steps_to_scan(conn, str(created["id"]), disease_id)
+        if created:
+            scan_id = str(created["id"])
+            if disease_id and not is_healthy:
+                await scan_steps_repo.copy_disease_steps_to_scan(conn, scan_id, disease_id)
+            elif payload.steps:
+                await scan_steps_repo.insert_custom_steps(
+                    conn,
+                    scan_id,
+                    [s.model_dump() for s in payload.steps],
+                )
         return created
 
     scan = await with_transaction(_insert)
     if not scan:
         raise AppException(500, "DATABASE_ERROR", "Gagal menyimpan data scan")
+
+    scan["rak_code"] = resolved_rak_code
+    scan["steps"] = await scan_steps_repo.get_steps_for_scan(str(scan["id"]))
 
     # Jika belum ada diagnosa on-device dan ada image, fallback jalankan server-side ML
     if not on_device_completed and (payload.image_public_id or payload.image_url):
@@ -210,7 +316,7 @@ async def list_scans(
     limit: int = 20,
     cursor: str | None = None,
 ) -> list[dict]:
-    return await scans_repo.list_scans(
+    items = await scans_repo.list_scans(
         user_id=user_id,
         status=status,
         rak_id=rak_id,
@@ -218,6 +324,11 @@ async def list_scans(
         limit=limit,
         cursor=cursor,
     )
+    scan_ids = [str(item["id"]) for item in items if item.get("id")]
+    steps_map = await scan_steps_repo.get_steps_for_scan_ids(scan_ids)
+    for item in items:
+        item["steps"] = steps_map.get(str(item.get("id")), [])
+    return items
 
 
 async def update_scan(

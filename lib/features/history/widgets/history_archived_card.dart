@@ -103,7 +103,7 @@ class HistoryArchivedCard extends StatelessWidget {
                 boxShadow: AppShadows.raisedSm,
               ),
               child: const Icon(
-                Icons.keyboard_arrow_down_rounded,
+                Icons.chevron_right_rounded,
                 size: 20,
                 color: AppColors.textSecondary,
               ),

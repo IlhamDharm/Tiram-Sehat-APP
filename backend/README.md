@@ -36,26 +36,12 @@ backend/
 ├── migrations/                 # SQL migration berurutan
 ├── seeds/                      # Data master
 ├── tests/                      # Unit test stdlib unittest
-├── main.py                     # Entrypoint legacy (dipakai ScanApiService Flutter)
-├── requirement.txt             # Dependensi entrypoint legacy
 ├── requirements.txt
 └── run.py
 ```
 
 Aturan dependensi: `router → service → repository → database`. Router tidak
 berisi SQL; repository tidak berisi aturan bisnis.
-
-### Catatan: dua entrypoint selama masa transisi
-
-| Entrypoint | Perintah | Dipakai oleh |
-|---|---|---|
-| Baru (`app/main.py`) | `python run.py` | `ApiClient` Flutter (`/api/v1/...`) |
-| Legacy (`main.py`) | `uvicorn main:app --port 8000` | `ScanApiService` Flutter (`/api/scan`, `/api/scans`) |
-
-Keduanya berbagi database Neon. `main.py` membaca `NEON_DATABASE_URL`, sedangkan
-`app/core/config.py` membaca `DATABASE_URL` (lihat `.env.example`). Target
-integrasi berikutnya: satukan `/api/scan` & `/api/scans` ke router
-`app/modules/scans` lalu hapus entrypoint legacy.
 
 ## Menjalankan
 
@@ -102,11 +88,11 @@ async def list_items(user_id: str = Depends(get_current_user_id)):
 
 | Grup | Endpoint |
 |---|---|
-| Auth | `POST /api/v1/auth/login`, `/google`, `/refresh`, `/logout` |
+| Auth | `POST /api/v1/auth/login`, `/register`, `/refresh`, `/logout` |
 | Home | `GET /api/v1/home/summary` (token opsional) |
 | Scans | `GET/POST /api/v1/scans`, `GET/PATCH/DELETE /api/v1/scans/{id}`, `POST /{id}/actions` |
 | Harvests | `GET/POST /api/v1/harvests`, `GET/PATCH/DELETE /api/v1/harvests/{id}` |
-| Uploads | `POST /api/v1/uploads/sign`, `/verify` |
+| Uploads | `POST /api/v1/uploads/sign`, `/image`, `/verify` |
 | Reports | `GET /api/v1/reports/daily`, `/trend`, `/monthly` |
 
 ## Catatan keamanan

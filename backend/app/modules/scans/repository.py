@@ -18,14 +18,16 @@ async def create_scan(conn: AsyncConnection, data: dict) -> dict | None:
             confidence, infection_location, severity,
             scan_method, image_public_id, image_url,
             image_version, image_thumbnail_url,
-            status, scanned_at, inference_status
+            status, status_note, status_tag,
+            scanned_at, inference_status
         ) VALUES (
             %(user_id)s, %(rak_id)s, %(column_no)s, %(batch_id)s,
             %(disease_id)s, %(diagnosis_name)s, %(scientific_name)s,
             %(confidence)s, %(infection_location)s, %(severity)s,
             %(scan_method)s, %(image_public_id)s, %(image_url)s,
             %(image_version)s, %(image_thumbnail_url)s,
-            %(status)s, %(scanned_at)s, %(inference_status)s
+            %(status)s, %(status_note)s, %(status_tag)s,
+            %(scanned_at)s, %(inference_status)s
         )
         RETURNING *
         """,
