@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:tiram_sehat/features/harvest/harvest_provider.dart';
-import 'package:tiram_sehat/features/report/report_provider.dart';
-import 'package:tiram_sehat/mock/mock_data.dart';
+import 'package:tiram_sehat/features/harvest/domain/models/harvest_entry.dart';
+import 'package:tiram_sehat/features/harvest/presentation/providers/harvest_provider.dart';
+import 'package:tiram_sehat/features/report/presentation/providers/report_provider.dart';
 
 void main() {
   group('Harvest & Report Integration Tests', () {

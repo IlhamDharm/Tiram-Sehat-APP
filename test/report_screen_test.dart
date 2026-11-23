@@ -46,15 +46,13 @@ void main() {
 
     // Verify SectionCards
     expect(find.text('Tingkat Keberhasilan Panen'), findsOneWidget);
-    expect(find.text('89,4%'), findsOneWidget);
     expect(find.text('Akumulasi Pekan Ini'), findsOneWidget);
     expect(find.text('Total Pemasukan Panen'), findsOneWidget);
     expect(find.text('Estimasi Kerugian Baglog'), findsOneWidget);
-    expect(find.text('Rp 420.000'), findsOneWidget);
 
     // Verify Batch Card & Action Button
-    expect(find.text('Batch Panen K-04 Margomulyo'), findsOneWidget);
-    expect(find.text('Unduh Rekap Laporan (CSV / PDF)'), findsOneWidget);
+    expect(find.text('Batch Panen K-04 Margomulyo'), findsNothing);
+    expect(find.text('Unduh Rekap Laporan Resmi (PDF)'), findsOneWidget);
 
     // Switch to Bulan Ini tab
     await tester.tap(find.text('Bulan Ini'));

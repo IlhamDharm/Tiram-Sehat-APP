@@ -23,9 +23,11 @@ void main() {
   testWidgets('Buku Panen menampilkan salinan §8.2 dan estimasi realtime',
       (WidgetTester tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: const Scaffold(body: HarvestScreen()),
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const Scaffold(body: HarvestScreen()),
+        ),
       ),
     );
 
@@ -41,14 +43,25 @@ void main() {
     expect(find.text('Rp 285.000'), findsOneWidget);
   });
 
-  testWidgets('App shell membuka tab Buku Panen', (WidgetTester tester) async {
+  testWidgets('App shell membuka tab Buku Panen dan menampilkan tombol logout',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: AppShell()),
+      const ProviderScope(
+        child: MaterialApp(home: AppShell()),
+      ),
     );
+
+    expect(find.byIcon(Icons.logout_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.person_rounded), findsNothing);
 
     await tester.tap(find.byIcon(Icons.menu_book_rounded));
     await tester.pump();
 
     expect(find.text('Catat Hasil Panen'), findsOneWidget);
+
+    // Ketuk tombol logout menampilkan dialog konfirmasi
+    await tester.tap(find.byIcon(Icons.logout_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Keluar dari Akun?'), findsOneWidget);
   });
 }

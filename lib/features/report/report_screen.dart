@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,10 +8,13 @@ import '../../core/components/section_card.dart';
 import '../../core/components/segmented_tabs.dart';
 import '../../core/components/action_button.dart';
 import '../../core/format/format_helper.dart';
-import '../../mock/mock_data.dart';
-import '../harvest/harvest_provider.dart';
-import 'report_provider.dart';
+import '../harvest/presentation/providers/harvest_provider.dart';
+import 'data/services/report_pdf_service.dart';
+import 'domain/models/report_data.dart';
+import 'presentation/providers/report_provider.dart';
 import 'widgets/trend_chart.dart';
+import '../home/data/models/home_summary.dart';
+import '../home/presentation/providers/home_provider.dart';
 
 /// Layar Evaluasi & Laporan (Anggota E)
 /// Terhubung langsung dengan pencatatan buku panen (Harvest),
@@ -26,23 +30,202 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   int _selectedTabIndex = 0;
   static const _tabs = ['Minggu Ini', 'Bulan Ini', 'Tahun Ini'];
 
-  void _downloadReport(String periodName, double kg, int income) {
+  /// Ringkasan statis (kartu efisiensi & kerugian) dari layer data laporan.
+  ReportData get _report => ref.watch(reportProvider);
+
+  Future<void> _handleExportPdf({
+    required WeeklyReportSummary weekly,
+    required MonthlyReportSummary monthly,
+    required String activePeriodName,
+    required double activeKg,
+    required int activeIncome,
+  }) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceInset,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.picture_as_pdf_rounded,
+                      color: AppColors.primary800,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ekspor Laporan Resmi (PDF)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'BUMDes Margomulyo • Unit Jamur Tiram',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.bg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.surfaceInset),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Periode', style: GoogleFonts.plusJakartaSans(fontSize: 12, color: AppColors.textMuted)),
+                        Text(activePeriodName, style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total Panen', style: GoogleFonts.plusJakartaSans(fontSize: 12, color: AppColors.textMuted)),
+                        Text(FormatHelper.kg(activeKg), style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary800)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total Penerimaan Kas', style: GoogleFonts.plusJakartaSans(fontSize: 12, color: AppColors.textMuted)),
+                        Text(FormatHelper.rupiah(activeIncome), style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary800)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              ActionButton(
+                label: 'Simpan / Bagikan ke WhatsApp (PDF)',
+                icon: Icons.share_rounded,
+                variant: ActionVariant.primary,
+                fullWidth: true,
+                onPress: () async {
+                  Navigator.pop(ctx);
+                  _generateAndSharePdf(weekly: weekly, monthly: monthly);
+                },
+              ),
+              const SizedBox(height: 10),
+              ActionButton(
+                label: 'Batal',
+                variant: ActionVariant.secondary,
+                fullWidth: true,
+                onPress: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _generateAndSharePdf({
+    required WeeklyReportSummary weekly,
+    required MonthlyReportSummary monthly,
+  }) async {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          'Rekap laporan $periodName (${FormatHelper.kg(kg)} / ${FormatHelper.rupiahSingkat(income)}) berhasil disiapkan!',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-          ),
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Menyusun dokumen PDF resmi...',
+              style: GoogleFonts.plusJakartaSans(fontSize: 12.5),
+            ),
+          ],
         ),
         backgroundColor: AppColors.primary800,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        duration: const Duration(seconds: 2),
       ),
     );
+
+    try {
+      final Uint8List pdfBytes;
+      final String filename;
+      final now = DateTime.now();
+      final dateTag = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+
+      if (_selectedTabIndex == 0) {
+        pdfBytes = await ReportPdfService.generateWeeklyReportPdf(weekly: weekly);
+        filename = 'Laporan_Panen_Pekan_$dateTag.pdf';
+      } else {
+        final harvests = ref.read(harvestListProvider);
+        pdfBytes = await ReportPdfService.generateMonthlyReportPdf(
+          monthly: monthly,
+          entries: harvests,
+        );
+        filename = 'Laporan_Panen_${monthly.monthName}_${monthly.year}.pdf';
+      }
+
+      await ReportPdfService.shareOrSavePdf(
+        pdfBytes: pdfBytes,
+        filename: filename,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengekspor PDF: $e'),
+          backgroundColor: AppColors.danger600,
+        ),
+      );
+    }
   }
 
   @override
@@ -50,8 +233,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     final weekly = ref.watch(weeklyHarvestReportProvider);
     final monthly = ref.watch(monthlyHarvestReportProvider);
     final yearly = ref.watch(yearlyHarvestReportProvider);
-    final latestHarvest = ref.watch(latestHarvestProvider);
-    const cycle = MockData.cycle;
+    final cycle = ref.watch(cycleProvider);
+    final homeSummary = ref.watch(homeSummaryProvider).valueOrNull;
 
     final double activeKg;
     final int activeIncome;
@@ -94,21 +277,31 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           if (_selectedTabIndex == 0) ...[
             _buildWeekNavigator(weekly),
             const SizedBox(height: AppSpacing.s4),
+          ] else if (_selectedTabIndex == 1) ...[
+            _buildMonthNavigator(monthly),
+            const SizedBox(height: AppSpacing.s4),
+          ] else ...[
+            _buildYearNavigator(yearly),
+            const SizedBox(height: AppSpacing.s4),
           ],
-          _buildMetricsRow(weekly, monthly, yearly),
+          _buildMetricsCards(weekly, monthly, yearly),
           const SizedBox(height: AppSpacing.sectionGap),
-          _buildEfficiencySection(weekly, monthly, yearly, cycle),
+          _buildEfficiencySection(weekly, monthly, yearly, cycle, homeSummary),
           const SizedBox(height: AppSpacing.sectionGap),
-          _buildAccumulationSection(weekly, monthly, yearly),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildBatchCard(latestHarvest),
+          _buildAccumulationSection(weekly, monthly, yearly, homeSummary),
           const SizedBox(height: AppSpacing.sectionGap),
           ActionButton(
-            label: 'Unduh Rekap Laporan (CSV / PDF)',
-            icon: Icons.download_rounded,
+            label: 'Unduh Rekap Laporan Resmi (PDF)',
+            icon: Icons.picture_as_pdf_rounded,
             variant: ActionVariant.secondary,
             fullWidth: true,
-            onPress: () => _downloadReport(activePeriodName, activeKg, activeIncome),
+            onPress: () => _handleExportPdf(
+              weekly: weekly,
+              monthly: monthly,
+              activePeriodName: activePeriodName,
+              activeKg: activeKg,
+              activeIncome: activeIncome,
+            ),
           ),
         ],
       ),
@@ -236,7 +429,190 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     );
   }
 
-  Widget _buildMetricsRow(
+  /// Navigasi bulan khusus untuk tab "Bulan Ini"
+  Widget _buildMonthNavigator(MonthlyReportSummary monthly) {
+    return NeuSurface(
+      variant: NeuVariant.raised,
+      radius: AppRadius.card,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Material(
+            color: AppColors.surfaceInset,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final current = ref.read(selectedReportDateProvider);
+                final prev = DateTime(current.year, current.month - 1, 1);
+                ref.read(selectedReportDateProvider.notifier).state = prev;
+              },
+              child: const SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_left_rounded,
+                  color: AppColors.primary800,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.calendar_month_rounded,
+                      size: 13,
+                      color: AppColors.primary600,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Periode Bulanan',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  monthly.monthName,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: AppColors.surfaceInset,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final current = ref.read(selectedReportDateProvider);
+                final next = DateTime(current.year, current.month + 1, 1);
+                ref.read(selectedReportDateProvider.notifier).state = next;
+              },
+              child: const SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.primary800,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Navigasi tahun khusus untuk tab "Tahun Ini"
+  Widget _buildYearNavigator(YearlyReportSummary yearly) {
+    return NeuSurface(
+      variant: NeuVariant.raised,
+      radius: AppRadius.card,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Material(
+            color: AppColors.surfaceInset,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final current = ref.read(selectedReportDateProvider);
+                final prev = DateTime(current.year - 1, current.month, 1);
+                ref.read(selectedReportDateProvider.notifier).state = prev;
+              },
+              child: const SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_left_rounded,
+                  color: AppColors.primary800,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 13,
+                      color: AppColors.primary600,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Periode Tahunan',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Tahun ${yearly.year}',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: AppColors.surfaceInset,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final current = ref.read(selectedReportDateProvider);
+                final next = DateTime(current.year + 1, current.month, 1);
+                ref.read(selectedReportDateProvider.notifier).state = next;
+              },
+              child: const SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.primary800,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Kotak Total Panen dan Penghasilan (Layout Vertikal Atas Bawah)
+  Widget _buildMetricsCards(
     WeeklyReportSummary weekly,
     MonthlyReportSummary monthly,
     YearlyReportSummary yearly,
@@ -259,8 +635,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       isPositive = weekly.deltaPct >= 0;
 
       incomeTitle = 'Penghasilan Minggu Ini';
-      incomeValue = FormatHelper.rupiahSingkat(weekly.totalIncome);
-      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahSingkat(weekly.avgPrice.round())} / Kg';
+      incomeValue = FormatHelper.rupiah(weekly.totalIncome);
+      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahPerKg(weekly.avgPrice.round())}';
     } else if (_selectedTabIndex == 1) {
       harvestTitle = 'Total Panen Bulan Ini';
       harvestValue = monthly.totalKg.toStringAsFixed(1).replaceAll('.', ',');
@@ -269,8 +645,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       isPositive = monthly.deltaPct >= 0;
 
       incomeTitle = 'Penghasilan Bulan Ini';
-      incomeValue = FormatHelper.rupiahSingkat(monthly.totalIncome);
-      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahSingkat(monthly.avgPrice.round())} / Kg';
+      incomeValue = FormatHelper.rupiah(monthly.totalIncome);
+      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahPerKg(monthly.avgPrice.round())}';
     } else {
       harvestTitle = 'Total Panen Tahun Ini';
       harvestValue = yearly.totalKg.toStringAsFixed(1).replaceAll('.', ',');
@@ -279,217 +655,204 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       isPositive = true;
 
       incomeTitle = 'Penghasilan Tahun Ini';
-      incomeValue = FormatHelper.rupiahSingkat(yearly.totalIncome);
-      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahSingkat(yearly.avgPrice.round())} / Kg';
+      incomeValue = FormatHelper.rupiah(yearly.totalIncome);
+      incomeAvgText = 'Rata-rata ${FormatHelper.rupiahPerKg(yearly.avgPrice.round())}';
     }
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Kartu Kiri: Total Panen
-        Expanded(
-          child: NeuSurface(
-            variant: NeuVariant.raised,
-            radius: AppRadius.card,
-            padding: const EdgeInsets.all(AppSpacing.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.hourglass_empty_rounded,
-                        color: AppColors.primary800,
-                        size: 18,
-                      ),
+        // Kotak Atas: Total Panen
+        NeuSurface(
+          variant: NeuVariant.raised,
+          radius: AppRadius.card,
+          padding: const EdgeInsets.all(AppSpacing.cardPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary100,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isPositive ? AppColors.primary100 : AppColors.danger100,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                            size: 11,
-                            color: isPositive ? AppColors.primary600 : AppColors.danger600,
-                          ),
-                          const SizedBox(width: 3),
-                          Text(
-                            harvestDeltaBadge,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: isPositive ? AppColors.primary600 : AppColors.danger600,
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: const Icon(
+                      Icons.hourglass_empty_rounded,
+                      color: AppColors.primary800,
+                      size: 20,
                     ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.s3),
-                Text(
-                  harvestTitle,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textMuted,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      harvestValue,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isPositive ? AppColors.primary100 : AppColors.danger100,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Kg',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.s2),
-                Row(
-                  children: [
-                    Icon(
-                      isPositive ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
-                      size: 13,
-                      color: isPositive ? AppColors.primary600 : AppColors.danger600,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        harvestDeltaText,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                          size: 13,
                           color: isPositive ? AppColors.primary600 : AppColors.danger600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        const SizedBox(width: 4),
+                        Text(
+                          harvestDeltaBadge,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: isPositive ? AppColors.primary600 : AppColors.danger600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                harvestTitle,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    harvestValue,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Kg',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s2),
+              Row(
+                children: [
+                  Icon(
+                    isPositive ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
+                    size: 14,
+                    color: isPositive ? AppColors.primary600 : AppColors.danger600,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      harvestDeltaText,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: isPositive ? AppColors.primary600 : AppColors.danger600,
                       ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: AppSpacing.s3),
-        // Kartu Kanan: Penghasilan
-        Expanded(
-          child: NeuSurface(
-            variant: NeuVariant.raised,
-            radius: AppRadius.card,
-            padding: const EdgeInsets.all(AppSpacing.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.payments_outlined,
-                        color: AppColors.primary800,
-                        size: 20,
+        const SizedBox(height: AppSpacing.s3),
+        // Kotak Bawah: Penghasilan
+        NeuSurface(
+          variant: NeuVariant.raised,
+          radius: AppRadius.card,
+          padding: const EdgeInsets.all(AppSpacing.cardPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.payments_outlined,
+                      color: AppColors.primary800,
+                      size: 22,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary100,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: Text(
+                      'Tunai',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary600,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary100,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Text(
-                        'Tunai',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                incomeTitle,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textMuted,
                 ),
-                const SizedBox(height: AppSpacing.s3),
-                Text(
-                  incomeTitle,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                incomeValue,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary800,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.s2),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.sell_outlined,
+                    size: 14,
                     color: AppColors.textMuted,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  incomeValue,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary800,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: AppSpacing.s2),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.sell_outlined,
-                      size: 13,
-                      color: AppColors.textMuted,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        incomeAvgText,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textMuted,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      incomeAvgText,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textMuted,
                       ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ],
@@ -501,6 +864,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     MonthlyReportSummary monthly,
     YearlyReportSummary yearly,
     BaglogCycle cycle,
+    HomeSummary? homeSummary,
   ) {
     final String chartTitle;
     final String chartBadge;
@@ -524,10 +888,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       chartLabels = yearly.quarterLabels;
     }
 
-    final healthyCount = MockData.report.healthy;
-    final infectedCount = MockData.report.contaminated;
-    final totalCount = MockData.report.totalBaglog;
-    final healthRatioPct = (MockData.report.success * 100).toStringAsFixed(1).replaceAll('.', ',');
+    // Data didapatkan dari Beranda (homeSummary)
+    final totalCount = homeSummary?.activeBaglogs ?? _report.totalBaglog;
+    final healthyCount = homeSummary?.healthyBaglogs ?? _report.healthy;
+    final infectedCount = homeSummary?.contaminatedBaglogs ?? _report.contaminated;
+    final healthRatio = (homeSummary != null && homeSummary.activeBaglogs > 0)
+        ? (homeSummary.healthyBaglogs / homeSummary.activeBaglogs)
+        : _report.success;
+    final healthRatioPct = (healthRatio * 100).toStringAsFixed(1).replaceAll('.', ',');
 
     return SectionCard(
       icon: Icons.eco_rounded,
@@ -676,7 +1044,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    '$infectedCount Terkontaminasi',
+                    '${FormatHelper.baglog(infectedCount)} Terkontaminasi',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -697,7 +1065,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 children: [
                   Container(color: AppColors.danger100),
                   FractionallySizedBox(
-                    widthFactor: (healthyCount / totalCount).clamp(0.0, 1.0),
+                    widthFactor: (totalCount > 0 ? (healthyCount / totalCount) : 0.0).clamp(0.0, 1.0),
                     child: Container(color: AppColors.primary400),
                   ),
                 ],
@@ -713,6 +1081,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     WeeklyReportSummary weekly,
     MonthlyReportSummary monthly,
     YearlyReportSummary yearly,
+    HomeSummary? homeSummary,
   ) {
     final String sectionTitle;
     final String periodLabel;
@@ -735,6 +1104,11 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       income = yearly.totalIncome;
       weight = yearly.totalKg;
     }
+
+    // Estimasi Kerugian dari total baglog yang dibuang / harus dibuang (Beranda)
+    final discardedBaglogs = homeSummary?.discardedBaglogs ?? 75;
+    const int baglogUnitCost = 3000;
+    final estimatedLoss = discardedBaglogs * baglogUnitCost;
 
     return SectionCard(
       icon: Icons.account_balance_wallet_outlined,
@@ -771,7 +1145,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        FormatHelper.rupiahSingkat(income),
+                        FormatHelper.rupiah(income),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 21,
                           fontWeight: FontWeight.w800,
@@ -839,7 +1213,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        FormatHelper.rupiah(MockData.report.monthLoss),
+                        FormatHelper.rupiah(estimatedLoss),
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 21,
                           fontWeight: FontWeight.w800,
@@ -857,14 +1231,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(
-                              Icons.shield_outlined,
+                              Icons.delete_outline_rounded,
                               size: 13,
                               color: AppColors.danger600,
                             ),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                'Ditekan ${MockData.report.lossReducedPct}% via deteksi dini',
+                                '$discardedBaglogs baglog afkir & harus dibuang',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w600,
@@ -897,162 +1271,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.s4),
-          // Tip Lampu
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  color: AppColors.primary100,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.lightbulb_outline_rounded,
-                  color: AppColors.primary800,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12.5,
-                      height: 1.45,
-                      color: AppColors.textSecondary,
-                    ),
-                    children: const [
-                      TextSpan(
-                        text: 'Tindakan isolasi cepat pada ',
-                      ),
-                      TextSpan(
-                        text: 'Rak Kumbung B',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      TextSpan(
-                        text:
-                            ' berhasil menyelamatkan sekitar 120 baglog terdekat dari spora jamur hijau (*Trichoderma*).',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildBatchCard(HarvestEntry latest) {
-    final batch = MockData.report.batch;
-
-    return NeuSurface(
-      variant: NeuVariant.raised,
-      radius: AppRadius.card,
-      padding: const EdgeInsets.all(AppSpacing.cardPadding),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceInset,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Color(0xFF8D735C),
-                          Color(0xFF5A4433),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Icon(
-                    Icons.grass_rounded,
-                    color: Color(0xFFE8DACD),
-                    size: 32,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.s3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  batch.code,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Varietas ${batch.variety} • Hari ke-${batch.day}',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary100,
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Text(
-                        batch.grade,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Petik ${latest.date}',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textMuted,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

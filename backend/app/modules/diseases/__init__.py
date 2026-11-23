@@ -1,0 +1,2 @@
+"""Diseases module."""
+

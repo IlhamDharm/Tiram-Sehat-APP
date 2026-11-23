@@ -1,7 +1,11 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../mock/mock_data.dart';
+﻿import '../../domain/models/harvest_entry.dart';
 
-List<HarvestEntry> _buildInitialHarvests() {
+/// Seed panen untuk demo laporan mingguan/bulanan/tahunan.
+///
+/// Catatan: file ini hanya data contoh. Ganti dengan query lokal/SQLite atau
+/// endpoint /harvests saat integrasi data dinamis selesai.
+
+List<HarvestEntry> buildInitialHarvests() {
   final list = <HarvestEntry>[
     // --- Pekan Acuan: Minggu 20 Okt - Sabtu 26 Okt 2024 (1 Pekan Penuh) ---
     HarvestEntry(
@@ -185,28 +189,3 @@ List<HarvestEntry> _buildInitialHarvests() {
   list.sort((a, b) => b.dateTime.compareTo(a.dateTime));
   return list;
 }
-
-class HarvestNotifier extends StateNotifier<List<HarvestEntry>> {
-  HarvestNotifier() : super(_buildInitialHarvests());
-
-  void addHarvest(HarvestEntry entry) {
-    state = [entry, ...state]..sort((a, b) => b.dateTime.compareTo(a.dateTime));
-  }
-
-  void removeHarvest(String id) {
-    state = state.where((e) => e.id != id).toList();
-  }
-}
-
-final harvestListProvider = StateNotifierProvider<HarvestNotifier, List<HarvestEntry>>((ref) {
-  return HarvestNotifier();
-});
-
-final latestHarvestProvider = Provider<HarvestEntry>((ref) {
-  final harvests = ref.watch(harvestListProvider);
-  if (harvests.isEmpty) {
-    return MockData.harvestLast;
-  }
-  return harvests.first;
-});
-

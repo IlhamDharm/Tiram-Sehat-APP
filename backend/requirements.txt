@@ -1,0 +1,30 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Database
+psycopg[binary,pool]==3.2.4
+psycopg-pool==3.2.4
+
+# Settings & validation
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# Auth
+PyJWT==2.10.1
+bcrypt==4.2.1
+
+# HTTP client (ML inference)
+httpx==0.28.1
+
+# ML Inference (TFLite)
+ai-edge-litert>=2.0.0
+numpy>=2.0.0
+Pillow>=10.0.0
+
+# Cloudinary
+cloudinary==1.41.0
+
+# Utils
+python-multipart==0.0.20
+python-dotenv==1.0.1

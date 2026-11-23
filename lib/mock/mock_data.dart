@@ -1,187 +1,58 @@
-import '../core/format/format_helper.dart';
+import '../features/harvest/domain/models/harvest_entry.dart';
+import '../features/history/domain/models/history_item.dart';
+import '../features/report/domain/models/report_data.dart';
 
-class HarvestEntry {
-  final String id;
-  final DateTime dateTime;
-  final double weightKg;
-  final int pricePerKg;
-  final int grossIncome;
-  final String? note;
-  final String? customDate;
-
-  HarvestEntry({
-    String? id,
-    required this.dateTime,
-    required this.weightKg,
-    required this.pricePerKg,
-    int? grossIncome,
-    this.note,
-    this.customDate,
-  })  : id = id ?? '${dateTime.millisecondsSinceEpoch}_$weightKg',
-        grossIncome = grossIncome ?? (weightKg * pricePerKg).round();
-
-  String get date => customDate ?? FormatHelper.dateTimeLong(dateTime);
-}
-
-class BaglogCycle {
-  final int cycleNo;
-  final int total;
-  final int healthy;
-  final int treatable;
-  final int discarded;
-  final double healthRatio;
-
-  const BaglogCycle({
-    required this.cycleNo,
-    required this.total,
-    required this.healthy,
-    required this.treatable,
-    required this.discarded,
-    required this.healthRatio,
-  });
-}
-
-class SelfCheckData {
-  final int checked;
-  final int target;
-
-  const SelfCheckData({required this.checked, required this.target});
-}
-
-class ScanStep {
-  final String title;
-  final String description;
-
-  const ScanStep({required this.title, required this.description});
-}
-
-enum ScanSeverity { treatable, mustDiscard }
-
-class ScanResult {
-  final String id;
-  final String diagnosisName;
-  final String scientificName;
-  final double confidence;
-  final String infectionLocation;
-  final ScanSeverity severity;
-  final List<ScanStep> steps;
-  final String rack;
-  final int column;
-  final String scannedAt;
-  final String? imageUrl;
-
-  const ScanResult({
-    required this.id,
-    required this.diagnosisName,
-    required this.scientificName,
-    required this.confidence,
-    required this.infectionLocation,
-    required this.severity,
-    required this.steps,
-    required this.rack,
-    required this.column,
-    required this.scannedAt,
-    this.imageUrl,
-  });
-}
-
-enum HistorySectionCategory {
-  actionRequired,
-  recovered,
-  archived,
-}
-
-class HistoryItem {
-  final String id;
-  final String name;
-  final String badge;
-  final String tone; // 'warning', 'danger', 'success', 'neutral'
-  final String when;
-  final String rack;
-  final int col;
-  final HistorySectionCategory category;
-  final String? status;
-  final String? tag;
-  final String? note;
-  final String? actionLabel;
-  final bool isInitiallyExpanded;
-  final String? imageUrl;
-
-  const HistoryItem({
-    required this.id,
-    required this.name,
-    required this.badge,
-    required this.tone,
-    required this.when,
-    required this.rack,
-    required this.col,
-    required this.category,
-    this.status,
-    this.tag,
-    this.note,
-    this.actionLabel,
-    this.isInitiallyExpanded = false,
-    this.imageUrl,
-  });
-
-  String get rackLocation => '$rack • Kolom $col';
-}
-
+/// Data contoh untuk mode prototipe/offline.
+///
+/// File ini hanya boleh diimpor oleh datasource mock/local. Layer UI dan
+/// service produksi harus bergantung pada model domain, bukan pada folder ini.
 class MockData {
   static final harvestLast = HarvestEntry(
-    dateTime: DateTime(2024, 10, 24, 7, 30),
-    customDate: 'Kamis, 24 Okt 2024 - 07:30 WIB',
+    date: 'Kamis, 24 Okt 2024 - 07:30 WIB',
     weightKg: 18.5,
     pricePerKg: 15000,
     grossIncome: 277500,
+    buyer: 'Tengkulak Margomulyo',
+    note: 'Panen petik ke-3 kumbung selatan, kualitas baglog prima tanpa bercak.',
   );
 
-  static const cycle = BaglogCycle(
-    cycleNo: 4,
-    total: 2450,
-    healthy: 2210,
-    treatable: 165,
-    discarded: 75,
-    healthRatio: 0.902,
-  );
+  static final harvestHistory = <HarvestEntry>[
+    harvestLast,
+    HarvestEntry(
+      date: 'Rabu, 23 Okt 2024 - 07:15 WIB',
+      weightKg: 20.0,
+      pricePerKg: 15000,
+      grossIncome: 300000,
+      buyer: 'Pasar Tradisional',
+      note: 'Panen pagi rak B-01 s/d B-05, jamur mekar segar.',
+    ),
+    HarvestEntry(
+      date: 'Selasa, 22 Okt 2024 - 07:45 WIB',
+      weightKg: 16.5,
+      pricePerKg: 14500,
+      grossIncome: 239250,
+      buyer: 'Tengkulak Margomulyo',
+      note: 'Sortasi grade A dominan, tanpa bercak kuning.',
+    ),
+    HarvestEntry(
+      date: 'Senin, 21 Okt 2024 - 07:20 WIB',
+      weightKg: 22.0,
+      pricePerKg: 15000,
+      grossIncome: 330000,
+      buyer: 'Pengecer Langganan',
+      note: 'Petik raya kumbung barat, kondisi kumbung lembap optimal.',
+    ),
+    HarvestEntry(
+      date: 'Minggu, 20 Okt 2024 - 07:30 WIB',
+      weightKg: 19.0,
+      pricePerKg: 14000,
+      grossIncome: 266000,
+      buyer: 'Pasar Tradisional',
+      note: 'Borongan eceran pasar minggu.',
+    ),
+  ];
 
-  static const selfCheck = SelfCheckData(checked: 80, target: 100);
-
-  static const scanResult = ScanResult(
-    id: 'scan-0001',
-    diagnosisName: 'Green Mold',
-    scientificName: 'Trichoderma sp.',
-    confidence: 0.942,
-    infectionLocation: 'Cincin & Leher Baglog',
-    severity: ScanSeverity.treatable,
-    steps: [
-      ScanStep(
-        title: 'Pindahkan ke Rak Karantina',
-        description:
-            'Segera pisahkan baglog dari rak utama kumbung untuk mencegah penularan spora via sirkulasi udara lembap.',
-      ),
-      ScanStep(
-        title: 'Kerik Lembut Spora Hijau',
-        description:
-            'Gunakan sendok makan bersih yang telah disterilkan alkohol 70%. Kerik hingga batas miselium putih yang masih segar.',
-      ),
-      ScanStep(
-        title: 'Oles Larutan Kapur Tohor (CaCO3)',
-        description:
-            'Oleskan pasta kapur tohor pekat atau fungisida nabati rebusan daun sirih ke bekas kerokan untuk menaikkan pH lokal.',
-      ),
-      ScanStep(
-        title: 'Observasi Pemulihan 48 Jam',
-        description:
-            'Jika miselium putih tumbuh menutupi bekas luka, baglog aman. Jika spora menghitam/meluas, segera buang dari kumbung.',
-      ),
-    ],
-    rack: 'Rak Kumbung B-04',
-    column: 3,
-    scannedAt: 'Hari ini, 09:15',
-  );
-
-  static const List<HistoryItem> historyList = [
+  static final List<HistoryItem> historyList = [
     // 1. Perlu Tindakan
     HistoryItem(
       id: 'h-01',
@@ -205,7 +76,8 @@ class MockData {
       category: HistorySectionCategory.actionRequired,
       status: 'Status: Menunggu Pemusnahan',
       tag: 'Urgen',
-      note: 'Segera bakar atau buang jauh dari kumbung agar spora hitam tidak menyebar ke baglog sehat di sekitarnya.',
+      note:
+          'Segera bakar atau buang jauh dari kumbung agar spora hitam tidak menyebar ke baglog sehat di sekitarnya.',
       actionLabel: 'Konfirmasi Buang Baglog',
       isInitiallyExpanded: true,
     ),
@@ -220,7 +92,8 @@ class MockData {
       category: HistorySectionCategory.actionRequired,
       status: 'Status: Menunggu Desinfeksi',
       tag: 'Perawatan Ringan',
-      note: 'Pembersihan permukaan bercak cokelat dengan lap bersih kering & semprot larutan kalsium hipoklorit encer.',
+      note:
+          'Pembersihan permukaan bercak cokelat dengan lap bersih kering & semprot larutan kalsium hipoklorit encer.',
       actionLabel: 'Konfirmasi Selesai Diobati',
       isInitiallyExpanded: true,
     ),
@@ -237,7 +110,8 @@ class MockData {
       category: HistorySectionCategory.recovered,
       status: 'Miselium Kembali Merambat Aktif',
       tag: 'Karantina Tuntas',
-      note: 'Telah disemprot fungisida nabati rebusan sirih & kapur tohor. Spora putih laba-laba mati tuntas, miselium sehat telah menutup 95% kembali ke rak produksi.',
+      note:
+          'Telah disemprot fungisida nabati rebusan sirih & kapur tohor. Spora putih laba-laba mati tuntas, miselium sehat telah menutup 95% kembali ke rak produksi.',
       isInitiallyExpanded: true,
     ),
     HistoryItem(
@@ -251,7 +125,8 @@ class MockData {
       category: HistorySectionCategory.recovered,
       status: 'Area Berlendir Kering Sempurna',
       tag: 'Stabil',
-      note: 'Sanitasi klorin encer berhasil membendung bakteri anaerob. Sirkulasi kumbung ditingkatkan, pinhead baru mulai terbentuk normal.',
+      note:
+          'Sanitasi klorin encer berhasil membendung bakteri anaerob. Sirkulasi kumbung ditingkatkan, pinhead baru mulai terbentuk normal.',
       isInitiallyExpanded: true,
     ),
 
@@ -303,58 +178,3 @@ class MockData {
     ),
   );
 }
-
-class BatchData {
-  final String code;
-  final String variety;
-  final int day;
-  final String grade;
-  final String weighedAt;
-
-  const BatchData({
-    required this.code,
-    required this.variety,
-    required this.day,
-    required this.grade,
-    required this.weighedAt,
-  });
-}
-
-class ReportData {
-  final double todayKg;
-  final double deltaKg;
-  final double deltaPct;
-  final int salesToday;
-  final int pricePerKg;
-  final double success;
-  final int totalBaglog;
-  final int healthy;
-  final int contaminated;
-  final List<double> trend;
-  final double trendDelta;
-  final int monthIncome;
-  final double monthKg;
-  final int monthLoss;
-  final int lossReducedPct;
-  final BatchData batch;
-
-  const ReportData({
-    required this.todayKg,
-    required this.deltaKg,
-    required this.deltaPct,
-    required this.salesToday,
-    required this.pricePerKg,
-    required this.success,
-    required this.totalBaglog,
-    required this.healthy,
-    required this.contaminated,
-    required this.trend,
-    required this.trendDelta,
-    required this.monthIncome,
-    required this.monthKg,
-    required this.monthLoss,
-    required this.lossReducedPct,
-    required this.batch,
-  });
-}
-

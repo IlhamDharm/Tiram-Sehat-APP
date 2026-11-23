@@ -6,9 +6,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/components/app_bottom_sheet.dart';
+import '../../core/format/format_helper.dart';
+import '../../core/network/api_providers.dart';
 import '../../core/services/scan_api_service.dart';
-import '../../mock/mock_data.dart';
-import '../history/history_provider.dart';
+import '../history/presentation/providers/history_provider.dart';
+import 'data/services/offline_sync_manager.dart';
+import 'domain/models/scan_result.dart';
 import 'widgets/app_camera_preview.dart';
 import 'widgets/scan_viewfinder_screen.dart';
 import 'widgets/scan_result_sheet.dart';
@@ -39,6 +42,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   Uint8List? _capturedBytes;
   ScanResult? _scanResult;
+  String? _scanError;
   bool _isSavingHistory = false;
 
   ScanPhase _phase = ScanPhase.viewfinder;
@@ -256,69 +260,134 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   }
 
   Future<void> _analyzeBytes(Uint8List? bytes) async {
-    setState(() => _phase = ScanPhase.analyzing);
-
-    if (bytes != null && bytes.isNotEmpty) {
-      try {
-        // Unggah ke Cloudinary dan simpan ke Neon DB via backend FastAPI
-        final result = await ScanApiService.instance.uploadScan(
-          bytes: bytes,
-          filename: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        );
-
-        if (mounted && _phase == ScanPhase.analyzing) {
-          setState(() {
-            _scanResult = result;
-            _phase = ScanPhase.result;
-          });
-          return;
-        }
-      } catch (e) {
-        debugPrint('ScanApiService upload failed, fallback to local: $e');
-      }
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _scanResult = null;
+        _scanError = 'Gambar tidak ditemukan. Silakan ambil foto ulang.';
+        _phase = ScanPhase.result;
+      });
+      return;
     }
 
-    // Fallback simulasi jika backend offline atau gambar kosong
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted || _phase != ScanPhase.analyzing) return;
     setState(() {
-      _scanResult = MockData.scanResult;
-      _phase = ScanPhase.result;
+      _phase = ScanPhase.analyzing;
+      _scanError = null;
     });
+
+    try {
+      final api = ref.read(apiClientProvider);
+      final result = await ScanApiService.instance.predictImage(
+        bytes: bytes,
+        api: api,
+        filename: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        rack: 'Rak Kumbung',
+        column: 0,
+      );
+      if (!mounted || _phase != ScanPhase.analyzing) return;
+      setState(() {
+        _scanResult = result;
+        _phase = ScanPhase.result;
+      });
+    } catch (e) {
+      debugPrint('Backend TFLite inference error: $e');
+      if (!mounted) return;
+      setState(() {
+        _scanResult = null;
+        _scanError =
+            'Gagal menganalisis gambar di server AI. Pastikan koneksi internet aktif dan server berjalan.';
+        _phase = ScanPhase.result;
+      });
+    }
+  }
+
+  /// Sinkronisasi antrean offline ke backend baru. Dilewati selama sesi login
+  /// masih simulasi (belum ada token).
+  Future<void> _triggerBackgroundSync() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      if (!api.hasToken) return;
+      await OfflineSyncManager().syncPending(api);
+    } catch (_) {
+      // Offline di kumbung: antrean tetap tersimpan sampai ada internet.
+    }
   }
 
   void _reset() {
     setState(() {
       _capturedBytes = null;
       _scanResult = null;
+      _scanError = null;
       _isSavingHistory = false;
       _phase = ScanPhase.viewfinder;
     });
   }
 
-  Future<void> _handleSaveToHistory(ScanResult activeResult) async {
+  Future<void> _handleSaveToHistory(
+    ScanResult activeResult,
+    String rack,
+    int column,
+  ) async {
     if (_isSavingHistory) return;
     _isSavingHistory = true;
 
-    var finalResult = activeResult;
+    final formattedRack = 'Rak Kumbung ${rack.toUpperCase()}';
+    var finalResult = ScanResult(
+      id: 'scan-${DateTime.now().millisecondsSinceEpoch}',
+      diagnosisName: activeResult.diagnosisName,
+      scientificName: activeResult.scientificName,
+      confidence: activeResult.confidence,
+      infectionLocation: activeResult.infectionLocation,
+      severity: activeResult.severity,
+      steps: activeResult.steps,
+      rack: formattedRack,
+      column: column,
+      scannedAt: activeResult.scannedAt,
+      imageUrl: activeResult.imageUrl,
+      mlLabel: activeResult.mlLabel,
+      modelVersion: activeResult.modelVersion,
+      probabilities: activeResult.probabilities,
+      description: activeResult.description,
+    );
 
-    // Jika belum tersimpan ke server tapi ada data gambar, lakukan upload sekarang
-    if ((finalResult.imageUrl == null || finalResult.imageUrl!.isEmpty) &&
-        _capturedBytes != null &&
-        _capturedBytes!.isNotEmpty) {
+    final api = ref.read(apiClientProvider);
+    final severityStr = switch (activeResult.severity) {
+      ScanSeverity.healthy => 'healthy',
+      ScanSeverity.mustDiscard => 'must_discard',
+      ScanSeverity.treatable => 'treatable',
+    };
+
+    var uploadedToServer = false;
+    if (api.hasToken && _capturedBytes != null && _capturedBytes!.isNotEmpty) {
       try {
         final uploaded = await ScanApiService.instance.uploadScan(
           bytes: _capturedBytes!,
+          api: api,
           filename: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          rack: formattedRack,
+          column: column,
+          diagnosisName: activeResult.diagnosisName,
+          scientificName: activeResult.scientificName,
+          confidenceScore: activeResult.confidence,
+          infectionLocation: activeResult.infectionLocation,
+          severity: severityStr,
+          steps: activeResult.steps,
+          mlLabel: activeResult.mlLabel,
+          modelVersion: activeResult.modelVersion,
         );
         finalResult = uploaded;
+        uploadedToServer = true;
       } catch (e) {
         debugPrint('Save to history upload error: $e');
       }
     }
 
     if (!mounted) return;
-    ref.read(historyListProvider.notifier).addScanResult(finalResult);
+
+    if (!uploadedToServer) {
+      OfflineSyncManager().recordScan(finalResult);
+      _triggerBackgroundSync();
+    }
+    ref.read(historyControllerProvider.notifier).addFromScan(finalResult);
 
     if (mounted) {
       final bool isCloudSaved =
@@ -337,7 +406,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
                 child: Text(
                   isCloudSaved
                       ? 'Hasil scan disimpan ke Neon DB & Cloudinary (img_jamur)'
-                      : 'Backend offline (port 8000). Hasil scan tersimpan di riwayat lokal',
+                      : 'Gagal terhubung ke server. Hasil scan tersimpan di riwayat lokal',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -362,6 +431,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    final isCameraReady = _controller != null &&
+        _controller!.value.isInitialized &&
+        !_isInitializing &&
+        _cameraError == null;
+
     final cameraPreviewWidget = AppCameraPreview(
       controller: _controller,
       isInitialized: _controller != null && _controller!.value.isInitialized,
@@ -383,21 +457,90 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
           macroOn: _macroOn,
           onToggleMacro: _toggleMacro,
           cameraPreview: cameraPreviewWidget,
+          showReticle: isCameraReady,
         );
       case ScanPhase.analyzing:
         return _AnalyzingOverlay(cameraPreview: cameraPreviewWidget);
       case ScanPhase.result:
-        final activeResult = _scanResult ?? MockData.scanResult;
+        final activeResult = _scanResult;
+        if (activeResult == null) {
+          return _ScanFailureView(
+            message: _scanError ?? 'Hasil scan tidak tersedia.',
+            onRetry: _reset,
+            onBack: widget.onBack,
+          );
+        }
         return _ResultView(
           result: activeResult,
+          capturedBytes: _capturedBytes,
           cameraPreview: cameraPreviewWidget,
           flashOn: _flashOn,
           onToggleFlash: _toggleFlash,
           onClose: _reset,
           onScanAgain: _reset,
-          onSaveToHistory: () => _handleSaveToHistory(activeResult),
+          onSaveToHistory: (rack, column) =>
+              _handleSaveToHistory(activeResult, rack, column),
         );
     }
+  }
+}
+
+class _ScanFailureView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  const _ScanFailureView({
+    required this.message,
+    required this.onRetry,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.primary800,
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.pagePaddingX),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.white,
+                  size: 56,
+                ),
+                const SizedBox(height: AppSpacing.s3),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s5),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Coba Lagi'),
+                ),
+                TextButton(
+                  onPressed: onBack,
+                  child: const Text(
+                    'Kembali ke Beranda',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -442,15 +585,17 @@ class _AnalyzingOverlay extends StatelessWidget {
 
 class _ResultView extends StatelessWidget {
   final ScanResult result;
+  final Uint8List? capturedBytes;
   final Widget cameraPreview;
   final bool flashOn;
   final VoidCallback onToggleFlash;
   final VoidCallback onClose;
   final VoidCallback onScanAgain;
-  final VoidCallback onSaveToHistory;
+  final void Function(String rack, int column) onSaveToHistory;
 
   const _ResultView({
     required this.result,
+    this.capturedBytes,
     required this.cameraPreview,
     required this.flashOn,
     required this.onToggleFlash,
@@ -480,8 +625,10 @@ class _ResultView extends StatelessWidget {
           ),
         ),
         AppBottomSheet(
-          builder: (context, snap) => ScanResultSheetContent(
+          builder: (context, snap, scrollController) => ScanResultSheetContent(
             result: result,
+            capturedBytes: capturedBytes,
+            scrollController: scrollController,
             onSaveToHistory: onSaveToHistory,
             onScanAgain: onScanAgain,
           ),
@@ -512,16 +659,16 @@ class _ResultTopBar extends StatelessWidget {
       child: Row(
         children: [
           _CircleAction(
+            icon: Icons.close_rounded,
+            iconColor: AppColors.textSecondary,
+            onTap: onClose,
+          ),
+          const Spacer(),
+          _CircleAction(
             icon: Icons.flashlight_on_rounded,
             iconColor: AppColors.warning500,
             active: flashOn,
             onTap: onToggleFlash,
-          ),
-          const Spacer(),
-          _CircleAction(
-            icon: Icons.close_rounded,
-            iconColor: AppColors.textSecondary,
-            onTap: onClose,
           ),
         ],
       ),
@@ -569,29 +716,46 @@ class _DetectionBox extends StatelessWidget {
 
   const _DetectionBox({required this.result});
 
+  Color get _badgeColor => switch (result.severity) {
+        ScanSeverity.healthy => AppColors.primary600,
+        ScanSeverity.mustDiscard => AppColors.danger600,
+        ScanSeverity.treatable => AppColors.warning500,
+      };
+
+  String get _badgePrefix => switch (result.severity) {
+        ScanSeverity.healthy => '✓',
+        ScanSeverity.mustDiscard => '⚠',
+        ScanSeverity.treatable => '⚠',
+      };
+
   @override
   Widget build(BuildContext context) {
+    final displayTitle = result.scientificName.isNotEmpty
+        ? result.scientificName
+        : result.diagnosisName;
+    final badgeColor = _badgeColor;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(
+          SizedBox(
             width: 240,
             height: 190,
             child: CustomPaint(
-              size: Size(240, 190),
-              painter: _DetectionCornerPainter(),
+              size: const Size(240, 190),
+              painter: _DetectionCornerPainter(color: badgeColor),
             ),
           ),
           const SizedBox(height: AppSpacing.s2),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.warning500,
+              color: badgeColor,
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
             child: Text(
-              '⚠ ${result.scientificName} 94%',
+              '$_badgePrefix $displayTitle ${FormatHelper.persen(result.confidence * 100)}',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -606,13 +770,15 @@ class _DetectionBox extends StatelessWidget {
 }
 
 class _DetectionCornerPainter extends CustomPainter {
-  const _DetectionCornerPainter();
+  final Color color;
+
+  const _DetectionCornerPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
     const cornerLen = 34.0;
     final paint = Paint()
-      ..color = AppColors.warning500
+      ..color = color
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;

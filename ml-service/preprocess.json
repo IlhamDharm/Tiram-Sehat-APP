@@ -1,0 +1,9 @@
+{
+  "input_height": 224,
+  "input_width": 224,
+  "channels": 3,
+  "scale": 0.007843137,
+  "mean": [1.0, 1.0, 1.0],
+  "version": "v1"
+}
+

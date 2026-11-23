@@ -1,0 +1,153 @@
+[
+  {
+    "ml_label": "Healthy",
+    "name": "Baglog Sehat Produktif",
+    "scientific_name": "Pleurotus ostreatus",
+    "category": "sehat",
+    "severity": "healthy",
+    "location_hint": "Seluruh Baglog",
+    "description": "Baglog dalam kondisi optimal, miselium putih merambat tebal tanpa tanda kontaminasi penyakit.",
+    "steps": [
+      {
+        "step_order": 1,
+        "title": "Jaga Kelembapan Optimal",
+        "description": "Pertahankan kelembapan relatif 80-90% dengan penyemprotan kabut halus 2-3 kali sehari."
+      },
+      {
+        "step_order": 2,
+        "title": "Pastikan Sirkulasi Udara Lancar",
+        "description": "Buka ventilasi kumbung secara berkala agar sirkulasi oksigen optimal untuk pembentukan pinhead."
+      }
+    ]
+  },
+  {
+    "ml_label": "Single_Infected",
+    "name": "Kontaminasi Tunggal (Bisa Diobati)",
+    "scientific_name": "Trichoderma / Rhizopus / Aspergillus",
+    "category": "jamur",
+    "severity": "treatable",
+    "location_hint": "Cincin & Permukaan Baglog",
+    "description": "Kontaminasi jamur/kapang pada satu area terlokalisir. Masih berpotensi diselamatkan melalui karantina dan tindakan kuratif.",
+    "steps": [
+      {
+        "step_order": 1,
+        "title": "Pindahkan ke Rak Karantina",
+        "description": "Segera pisahkan baglog dari rak utama kumbung untuk mencegah penularan spora via sirkulasi udara lembap."
+      },
+      {
+        "step_order": 2,
+        "title": "Kerik Lembut Spora / Jamur Liar",
+        "description": "Gunakan sendok makan bersih steril alkohol 70%. Kerik hingga batas miselium putih yang masih segar."
+      },
+      {
+        "step_order": 3,
+        "title": "Oles Larutan Kapur Tohor (CaCO3)",
+        "description": "Oleskan pasta kapur tohor pekat atau fungisida nabati rebusan daun sirih ke bekas kerokan untuk menaikkan pH lokal."
+      },
+      {
+        "step_order": 4,
+        "title": "Observasi Pemulihan 48 Jam",
+        "description": "Jika miselium putih tumbuh menutupi bekas luka, baglog aman. Jika spora meluas, segera buang dari kumbung."
+      }
+    ]
+  },
+  {
+    "ml_label": "Mixed_Infected",
+    "name": "Kontaminasi Ganda / Parah (Harus Dibuang)",
+    "scientific_name": "Mixed Fungal Contamination",
+    "category": "jamur",
+    "severity": "must_discard",
+    "location_hint": "Sebagian Besar Substrat Baglog",
+    "description": "Kontaminasi jamur ganda atau parah pada sebagian besar substrat. Tidak dapat dipulihkan dan berisiko tinggi menulari baglog sehat lain.",
+    "steps": [
+      {
+        "step_order": 1,
+        "title": "Isolasi Segera dengan Plastik",
+        "description": "Tutup baglog rapat dengan kantong plastik sebelum dipindahkan agar spora tidak berhamburan di dalam kumbung."
+      },
+      {
+        "step_order": 2,
+        "title": "Musnahkan Jauh dari Kumbung",
+        "description": "Segera bakar atau kubur jauh dari area kumbung; jangan dibiarkan menumpuk di sekitar kumbung."
+      },
+      {
+        "step_order": 3,
+        "title": "Sterilisasi Rak Dudukan",
+        "description": "Semprot rak bekas baglog dengan cairan disinfektan atau alkohol 70% untuk mematikan sisa spora."
+      }
+    ]
+  },
+  {
+    "ml_label": "healthy",
+    "name": "Baglog Sehat Produktif",
+    "scientific_name": "Pleurotus ostreatus",
+    "category": "sehat",
+    "severity": "healthy",
+    "location_hint": "Seluruh Baglog",
+    "description": "Baglog dalam kondisi optimal, miselium putih merambat tebal tanpa tanda kontaminasi.",
+    "steps": [
+      {
+        "step_order": 1,
+        "title": "Jaga Kelembapan Kumbung",
+        "description": "Pertahankan kelembapan relatif 80-90% dengan penyemprotan kabut halus 2-3 kali sehari."
+      },
+      {
+        "step_order": 2,
+        "title": "Pastikan Sirkulasi Udara Lancar",
+        "description": "Buka ventilasi kumbung secara berkala agar sirkulasi oksigen optimal untuk pembentukan pinhead."
+      }
+    ]
+  },
+  {
+    "ml_label": "green_mold",
+    "name": "Green Mold",
+    "scientific_name": "Trichoderma sp.",
+    "category": "jamur",
+    "severity": "treatable",
+    "location_hint": "Cincin & Leher Baglog",
+    "description": "Kontaminasi jamur Trichoderma sp. berwarna hijau zamrud. Spora dapat menyebar cepat jika sirkulasi udara lembap berlebih.",
+    "steps": [
+      {
+        "step_order": 1,
+        "title": "Pindahkan ke Rak Karantina",
+        "description": "Segera pisahkan baglog dari rak utama kumbung untuk mencegah penularan spora via sirkulasi udara lembap."
+      },
+      {
+        "step_order": 2,
+        "title": "Kerik Lembut Spora Hijau",
+        "description": "Gunakan sendok makan bersih yang telah disterilkan alkohol 70%. Kerik hingga batas miselium putih yang masih segar."
+      },
+      {
+        "step_order": 3,
+        "title": "Oles Larutan Kapur Tohor (CaCO3)",
+        "description": "Oleskan pasta kapur tohor pekat atau fungisida nabati rebusan daun sirih ke bekas kerokan untuk menaikkan pH lokal."
+      },
+      {
+        "step_order": 4,
+        "title": "Observasi Pemulihan 48 Jam",
+        "description": "Jika miselium putih tumbuh menutupi bekas luka, baglog aman. Jika spora menghitam/meluas, segera buang dari kumbung."
+      }
+    ]
+  },
+  {
+    "ml_label": "black_bread_mold",
+    "name": "Black Bread Mold",
+    "scientific_name": "Rhizopus sp.",
+    "category": "jamur",
+    "severity": "must_discard",
+    "location_hint": "Permukaan baglog",
+    "description": "Kontaminasi Rhizopus sp. dengan bintik-bintik spora hitam lebat. Sangat agresif dan berisiko menular ke rak lain.",
+    "steps": [
+      {
+        "step_order": 1,
+        "title": "Isolasi Segera dengan Plastik",
+        "description": "Tutup baglog rapat dengan kantong plastik sebelum dipindahkan agar spora hitam tidak berterbangan di dalam kumbung."
+      },
+      {
+        "step_order": 2,
+        "title": "Musnahkan Jauh dari Kumbung",
+        "description": "Segera bakar atau kubur jauh dari area kumbung; bersihkan rak bekas baglog dengan disinfektan atau alkohol 70%."
+      }
+    ]
+  }
+]

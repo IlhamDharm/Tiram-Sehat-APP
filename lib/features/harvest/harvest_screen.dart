@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/components/action_button.dart';
@@ -6,26 +7,41 @@ import '../../core/components/app_chip.dart';
 import '../../core/components/currency_field.dart';
 import '../../core/components/neu_surface.dart';
 import '../../core/components/numeric_stepper_field.dart';
+import '../../core/components/segmented_tabs.dart';
 import '../../core/components/status_badge.dart';
 import '../../core/format/format_helper.dart';
 import '../../core/theme/tokens.dart';
-import '../../mock/mock_data.dart';
+import 'domain/models/harvest_entry.dart';
+import 'presentation/providers/harvest_provider.dart';
 
-/// Buku Panen — DESIGN.md §8.2 (Anggota A).
+enum HarvestSort {
+  newest('Terbaru', 'Tanggal transaksi paling mutakhir', Icons.schedule_rounded),
+  highestIncome('Omzet Terbesar', 'Nilai rupiah penjualan tertinggi', Icons.payments_rounded),
+  highestWeight('Bobot Terbanyak', 'Kilogram petik jamur terbanyak', Icons.scale_rounded);
+
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  const HarvestSort(this.label, this.subtitle, this.icon);
+}
+
+/// Buku Panen — DESIGN.md §8.2 (Anggota A) + Riwayat Panen & Penjualan.
 /// AppHeader disediakan AppShell; layar ini hanya konten scroll tab.
-class HarvestScreen extends StatefulWidget {
+class HarvestScreen extends ConsumerStatefulWidget {
   const HarvestScreen({super.key, this.onSaved});
 
   final VoidCallback? onSaved;
 
   @override
-  State<HarvestScreen> createState() => _HarvestScreenState();
+  ConsumerState<HarvestScreen> createState() => _HarvestScreenState();
 }
 
-class _HarvestScreenState extends State<HarvestScreen> {
+class _HarvestScreenState extends ConsumerState<HarvestScreen> {
   static const _quickPrices = <int>[14000, 15000, 16000];
-  static const _noteExample =
-      'Panen petik ke-3 kumbung selatan, kualitas baglog prima tanpa bercak.';
+  static const _tabs = ['Catat Panen', 'Riwayat & Kas'];
+
+  int _selectedTab = 0;
+  HarvestSort _currentSort = HarvestSort.newest;
 
   late DateTime _date;
   late double _weight;
@@ -35,10 +51,10 @@ class _HarvestScreenState extends State<HarvestScreen> {
   @override
   void initState() {
     super.initState();
-    _date = DateTime(2024, 10, 24);
-    _weight = MockData.harvestLast.weightKg;
-    _price = MockData.harvestLast.pricePerKg;
-    _note = TextEditingController(text: _noteExample);
+    _date = DateTime.now();
+    _weight = 18.5;
+    _price = 15000;
+    _note = TextEditingController();
   }
 
   @override
@@ -50,6 +66,19 @@ class _HarvestScreenState extends State<HarvestScreen> {
   int get _grossIncome => (_weight * _price).round();
 
   bool get _isValid => _weight > 0;
+
+  double _totalHistoryWeight(List<HarvestEntry> history) =>
+      history.fold(0.0, (acc, item) => acc + item.weightKg);
+
+  int _totalHistoryIncome(List<HarvestEntry> history) =>
+      history.fold(0, (acc, item) => acc + item.grossIncome);
+
+  int _avgHistoryPrice(List<HarvestEntry> history) {
+    final totalWeight = _totalHistoryWeight(history);
+    return totalWeight > 0
+        ? (_totalHistoryIncome(history) / totalWeight).round()
+        : 0;
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -64,14 +93,54 @@ class _HarvestScreenState extends State<HarvestScreen> {
   }
 
   void _save() {
+    final now = DateTime.now();
+    final harvestDateTime = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      now.hour,
+      now.minute,
+      now.second,
+    );
+
+    final entry = HarvestEntry(
+      dateTime: harvestDateTime,
+      weightKg: _weight,
+      pricePerKg: _price,
+      grossIncome: _grossIncome,
+      buyer: 'Tengkulak Margomulyo',
+      note: _note.text.trim().isNotEmpty ? _note.text.trim() : null,
+    );
+
+    ref.read(harvestControllerProvider.notifier).add(entry);
+
+    setState(() {
+      _selectedTab = 1;
+    });
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Data panen tersimpan')),
+      SnackBar(
+        content: Text(
+          'Data panen ${FormatHelper.kg(_weight)} (${FormatHelper.rupiah(_grossIncome)}) berhasil dicatat!',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        backgroundColor: AppColors.primary800,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
     );
     widget.onSaved?.call();
   }
 
   @override
   Widget build(BuildContext context) {
+    final history = ref.watch(harvestControllerProvider);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.pagePaddingX,
@@ -109,46 +178,676 @@ class _HarvestScreenState extends State<HarvestScreen> {
               color: AppColors.textSecondary,
             ),
           ),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildDateCard(),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildWeightField(),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildPriceField(),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildEstimateCard(),
-          const SizedBox(height: AppSpacing.sectionGap),
-          _buildNoteField(),
-          const SizedBox(height: AppSpacing.s5),
-          ActionButton(
-            label: 'Simpan Data Panen',
-            icon: Icons.save_rounded,
-            variant: ActionVariant.primary,
-            fullWidth: true,
-            onPress: _isValid ? _save : null,
-          ),
           const SizedBox(height: AppSpacing.s4),
-          Row(
+          SegmentedTabs(
+            items: _tabs,
+            value: _selectedTab,
+            onChange: (index) => setState(() => _selectedTab = index),
+          ),
+          const SizedBox(height: AppSpacing.sectionGap),
+          if (_selectedTab == 0) _buildFormTab() else _buildHistoryTab(history),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDateCard(),
+        const SizedBox(height: AppSpacing.sectionGap),
+        _buildWeightField(),
+        const SizedBox(height: AppSpacing.sectionGap),
+        _buildPriceField(),
+        const SizedBox(height: AppSpacing.sectionGap),
+        _buildEstimateCard(),
+        const SizedBox(height: AppSpacing.sectionGap),
+        _buildNoteField(),
+        const SizedBox(height: AppSpacing.s5),
+        ActionButton(
+          label: 'Simpan Data Panen',
+          icon: Icons.save_rounded,
+          variant: ActionVariant.primary,
+          fullWidth: true,
+          onPress: _isValid ? _save : null,
+        ),
+        const SizedBox(height: AppSpacing.s4),
+        Row(
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              size: 16,
+              color: AppColors.primary600,
+            ),
+            const SizedBox(width: AppSpacing.s2),
+            Expanded(
+              child: Text(
+                'Tersimpan di basis data lokal HP (Aman tanpa sinyal internet)',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHistoryTab(List<HarvestEntry> history) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Ringkasan Akumulasi Panen & Penjualan
+        Row(
+          children: [
+            Expanded(
+              child: NeuSurface(
+                variant: NeuVariant.raised,
+                radius: AppRadius.tile,
+                padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.eco_rounded,
+                            color: AppColors.primary800,
+                            size: 18,
+                          ),
+                        ),
+                        const Spacer(),
+                        const StatusBadge(
+                          label: 'Total Petik',
+                          tone: StatusTone.success,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.s3),
+                    Text(
+                      'TOTAL PANEN',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.04 * 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          _totalHistoryWeight(history)
+                              .toStringAsFixed(1)
+                              .replaceAll('.', ','),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Kg',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.s3),
+            Expanded(
+              child: NeuSurface(
+                variant: NeuVariant.raised,
+                radius: AppRadius.tile,
+                padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.payments_rounded,
+                            color: AppColors.primary800,
+                            size: 18,
+                          ),
+                        ),
+                        const Spacer(),
+                        const StatusBadge(
+                          label: 'Kas Masuk',
+                          tone: StatusTone.info,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.s3),
+                    Text(
+                      'TOTAL PENJUALAN',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.04 * 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      FormatHelper.rupiah(_totalHistoryIncome(history)),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.s3),
+
+        // Catatan harga rata-rata
+        NeuSurface(
+          variant: NeuVariant.inset,
+          radius: AppRadius.tile,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
             children: [
               const Icon(
-                Icons.check_circle_rounded,
+                Icons.insights_rounded,
                 size: 16,
                 color: AppColors.primary600,
               ),
               const SizedBox(width: AppSpacing.s2),
               Expanded(
                 child: Text(
-                  'Tersimpan di basis data lokal HP (Aman tanpa sinyal internet)',
+                  '${history.length} transaksi tercatat • Rata-rata: ${FormatHelper.rupiahPerKg(_avgHistoryPrice(history))}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
             ],
           ),
-        ],
+        ),
+        const SizedBox(height: AppSpacing.sectionGap),
+
+        // Header Daftar Transaksi + Tombol Sortir (Opsi 2)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Catatan Riwayat Petik & Kas',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    '${history.length} Entri tercatat',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            NeuSurface(
+              variant: NeuVariant.raised,
+              radius: AppRadius.pill,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  onTap: _showSortBottomSheet,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.swap_vert_rounded,
+                          size: 16,
+                          color: AppColors.primary600,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _currentSort.label,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary800,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.expand_more_rounded,
+                          size: 16,
+                          color: AppColors.primary800,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.s3),
+
+        // List item riwayat
+        if (history.isEmpty)
+          NeuSurface(
+            variant: NeuVariant.raised,
+            radius: AppRadius.card,
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
+            child: Center(
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.inventory_2_outlined,
+                    size: 40,
+                    color: AppColors.textMuted,
+                  ),
+                  const SizedBox(height: AppSpacing.s2),
+                  Text(
+                    'Belum ada catatan panen.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.s1),
+                  Text(
+                    'Gunakan tab Catat Panen untuk menambah data.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ..._sortHistory(history).map((entry) => _buildHistoryCard(entry)),
+
+        const SizedBox(height: AppSpacing.s4),
+        Row(
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 16,
+              color: AppColors.textMuted,
+            ),
+            const SizedBox(width: AppSpacing.s2),
+            Expanded(
+              child: Text(
+                'Data panen tersimpan di sesi ini dan siap disinkronkan ke server',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  List<HarvestEntry> _sortHistory(List<HarvestEntry> list) {
+    final copy = List<HarvestEntry>.from(list);
+    switch (_currentSort) {
+      case HarvestSort.newest:
+        copy.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        break;
+      case HarvestSort.highestIncome:
+        copy.sort((a, b) => b.grossIncome.compareTo(a.grossIncome));
+        break;
+      case HarvestSort.highestWeight:
+        copy.sort((a, b) => b.weightKg.compareTo(a.weightKg));
+        break;
+    }
+    return copy;
+  }
+
+  void _showSortBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.pagePaddingX,
+          AppSpacing.s3,
+          AppSpacing.pagePaddingX,
+          AppSpacing.s6,
+        ),
+        decoration: const BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.card),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceInset,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary100,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.swap_vert_rounded,
+                    color: AppColors.primary800,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s3),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Urutkan Riwayat',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Pilih susunan tampilan catatan panen & kas',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            for (final option in HarvestSort.values) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.s2),
+                child: NeuSurface(
+                  variant: option == _currentSort
+                      ? NeuVariant.raised
+                      : NeuVariant.flat,
+                  radius: AppRadius.tile,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.tile),
+                      onTap: () {
+                        setState(() => _currentSort = option);
+                        Navigator.of(ctx).pop();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.s3,
+                          vertical: AppSpacing.s3,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: option == _currentSort
+                                    ? AppColors.primary100
+                                    : AppColors.surfaceInset,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                option.icon,
+                                size: 18,
+                                color: option == _currentSort
+                                    ? AppColors.primary800
+                                    : AppColors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.s3),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    option.label,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 14,
+                                      fontWeight: option == _currentSort
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
+                                      color: option == _currentSort
+                                          ? AppColors.primary800
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    option.subtitle,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w400,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (option == _currentSort)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: AppColors.primary600,
+                                size: 20,
+                              )
+                            else
+                              const Icon(
+                                Icons.radio_button_unchecked_rounded,
+                                color: AppColors.textMuted,
+                                size: 20,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryCard(HarvestEntry entry) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.s3),
+      child: NeuSurface(
+        variant: NeuVariant.raised,
+        radius: AppRadius.card,
+        padding: const EdgeInsets.all(AppSpacing.cardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Baris atas: Tanggal + Pembeli/Badge
+            Row(
+              children: [
+                const Icon(
+                  Icons.event_note_rounded,
+                  size: 16,
+                  color: AppColors.textMuted,
+                ),
+                const SizedBox(width: AppSpacing.s1),
+                Expanded(
+                  child: Text(
+                    entry.date,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ),
+                if (entry.buyer != null)
+                  StatusBadge(
+                    label: entry.buyer!,
+                    tone: StatusTone.success,
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.s3),
+
+            // Baris tengah: Nilai rupiah + rincian berat x harga
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        FormatHelper.rupiah(entry.grossIncome),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${FormatHelper.kg(entry.weightKg)} × ${FormatHelper.rupiah(entry.pricePerKg)}',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary100,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.add_rounded,
+                        size: 14,
+                        color: AppColors.primary800,
+                      ),
+                      Text(
+                        FormatHelper.kg(entry.weightKg),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            // Catatan (jika ada)
+            if (entry.note != null && entry.note!.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.s3),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(AppSpacing.s3),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceInset,
+                  borderRadius: BorderRadius.circular(AppRadius.tile),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.sticky_note_2_rounded,
+                      size: 15,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: AppSpacing.s2),
+                    Expanded(
+                      child: Text(
+                        entry.note!,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

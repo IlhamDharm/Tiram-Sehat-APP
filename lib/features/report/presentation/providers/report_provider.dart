@@ -1,7 +1,29 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/format/format_helper.dart';
-import '../../mock/mock_data.dart';
-import '../harvest/harvest_provider.dart';
+﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/format/format_helper.dart';
+import '../../../harvest/domain/models/harvest_entry.dart';
+import '../../../harvest/presentation/providers/harvest_provider.dart';
+import '../../data/datasources/report_local_datasource.dart';
+import '../../data/repositories/report_repository.dart';
+import '../../domain/models/report_data.dart';
+
+final reportLocalDataSourceProvider = Provider<ReportLocalDataSource>((ref) {
+  return ReportLocalDataSource();
+});
+
+final reportRepositoryProvider = Provider<ReportRepository>((ref) {
+  return ReportRepository(ref.watch(reportLocalDataSourceProvider));
+});
+
+/// Ringkasan statis untuk kartu yang belum punya agregasi dinamis.
+final reportProvider = Provider<ReportData>((ref) {
+  return ref.watch(reportRepositoryProvider).getReport();
+});
+
+/// Ringkasan siklus baglog (kartu efisiensi).
+final cycleProvider = Provider<BaglogCycle>((ref) {
+  return ref.watch(reportRepositoryProvider).getCycle();
+});
+
 
 DateTime getSundayOfWeek(DateTime date) {
   final d = DateTime(date.year, date.month, date.day);
