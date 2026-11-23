@@ -15,19 +15,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import close_pool, open_pool
 from app.core.exceptions import register_exception_handlers
+from app.core.tflite_model import is_model_loaded, load_model
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup / shutdown hooks — open and close the DB pool."""
+    """Startup / shutdown hooks — open DB pool and preload TFLite model."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     logger.info("Starting TiramSehat backend (env=%s)", settings.APP_ENV)
     await open_pool()
+    try:
+        await asyncio.to_thread(load_model)
+    except Exception as exc:  # pragma: no cover - defensive startup guard
+        logger.warning("TFLite preload skipped: %s", exc)
     yield
     await close_pool()
     logger.info("TiramSehat backend stopped")
@@ -78,7 +83,14 @@ def create_app() -> FastAPI:
     # ── Health check ────────────────────────────────
     @app.get("/health")
     async def health():
-        return {"data": {"status": "ok", "version": "1.0.0"}}
+        return {
+            "data": {
+                "status": "ok",
+                "version": "1.0.0",
+                "model_loaded": is_model_loaded(),
+                "model_version": settings.ML_MODEL_VERSION,
+            }
+        }
 
     return app
 

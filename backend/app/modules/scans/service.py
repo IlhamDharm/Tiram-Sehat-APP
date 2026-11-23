@@ -6,21 +6,158 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks
+from PIL import UnidentifiedImageError
 
 from app.core.cloudinary import build_image_url, build_thumbnail_url
 from app.core.config import settings
 from app.core.database import with_transaction
 from app.core.exceptions import AppException
 from app.core.ml_client import predict_from_url
+from app.core.tflite_model import predict_image_bytes_async
 from app.modules.diseases import repository as diseases_repo
 from app.modules.scans import repository as scans_repo
 from app.modules.scans import steps_repository as scan_steps_repo
 from app.modules.scans.schemas import CreateActionRequest, CreateScanRequest, UpdateScanRequest
 
 logger = logging.getLogger(__name__)
+
+_MAX_PREDICT_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
+_ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+
+_FALLBACK_DISEASE_METADATA: dict[str, dict[str, Any]] = {
+    "healthy": {
+        "name": "Baglog Sehat Produktif",
+        "scientific_name": "Pleurotus ostreatus",
+        "severity": "healthy",
+        "is_healthy": True,
+        "location_hint": "Seluruh Baglog",
+        "description": (
+            "Baglog dalam kondisi optimal, miselium putih merambat tebal "
+            "tanpa tanda kontaminasi green mold maupun black mold."
+        ),
+        "steps": [
+            {
+                "step_order": 1,
+                "title": "Jaga Kelembapan Optimal",
+                "description": (
+                    "Pertahankan kelembapan relatif 80-90% dengan penyemprotan "
+                    "kabut halus 2-3 kali sehari."
+                ),
+            },
+            {
+                "step_order": 2,
+                "title": "Pastikan Sirkulasi Udara Lancar",
+                "description": (
+                    "Buka ventilasi kumbung secara berkala agar sirkulasi oksigen "
+                    "optimal untuk pembentukan pinhead."
+                ),
+            },
+        ],
+    },
+    "greenmold": {
+        "name": "Green Mold",
+        "scientific_name": "Trichoderma sp.",
+        "severity": "treatable",
+        "is_healthy": False,
+        "location_hint": "Cincin & Leher Baglog",
+        "description": (
+            "Kontaminasi jamur hijau (Trichoderma sp.) pada permukaan atau "
+            "leher baglog. Masih dapat ditangani melalui karantina dan tindakan kuratif."
+        ),
+        "steps": [
+            {
+                "step_order": 1,
+                "title": "Pindahkan ke Rak Karantina",
+                "description": (
+                    "Segera pisahkan baglog dari rak utama kumbung untuk mencegah "
+                    "penularan spora via sirkulasi udara lembap."
+                ),
+            },
+            {
+                "step_order": 2,
+                "title": "Kerik Lembut Spora Hijau",
+                "description": (
+                    "Gunakan sendok makan bersih yang telah disterilkan alkohol 70%. "
+                    "Kerik hingga batas miselium putih yang masih segar."
+                ),
+            },
+            {
+                "step_order": 3,
+                "title": "Oles Larutan Kapur Tohor (CaCO3)",
+                "description": (
+                    "Oleskan pasta kapur tohor pekat atau fungisida nabati rebusan "
+                    "daun sirih ke bekas kerokan untuk menaikkan pH lokal."
+                ),
+            },
+            {
+                "step_order": 4,
+                "title": "Observasi Pemulihan 48 Jam",
+                "description": (
+                    "Jika miselium putih tumbuh menutupi bekas luka, baglog aman. "
+                    "Jika spora meluas, segera buang dari kumbung."
+                ),
+            },
+        ],
+    },
+    "blackmold": {
+        "name": "Black Mold",
+        "scientific_name": "Rhizopus sp. / Aspergillus niger",
+        "severity": "must_discard",
+        "is_healthy": False,
+        "location_hint": "Permukaan & Substrat Baglog",
+        "description": (
+            "Kontaminasi jamur hitam (Black Mold) dengan spora agresif yang cepat "
+            "menyebar melalui udara. Wajib segera dibuang agar tidak menulari seisi kumbung."
+        ),
+        "steps": [
+            {
+                "step_order": 1,
+                "title": "Isolasi Segera dengan Plastik",
+                "description": (
+                    "Tutup baglog rapat dengan plastik sebelum dipindahkan agar spora "
+                    "hitam tidak berterbangan di dalam kumbung."
+                ),
+            },
+            {
+                "step_order": 2,
+                "title": "Musnahkan Jauh dari Kumbung",
+                "description": (
+                    "Segera buang atau bakar jauh dari area budidaya kumbung. "
+                    "Jangan biarkan menumpuk di sekitar kumbung."
+                ),
+            },
+            {
+                "step_order": 3,
+                "title": "Sterilisasi Lokasi Rak",
+                "description": (
+                    "Semprot rak bekas baglog dengan alkohol 70% atau disinfektan "
+                    "untuk mematikan sisa spora patogen."
+                ),
+            },
+        ],
+    },
+}
+
+_FALLBACK_LABEL_ALIASES: dict[str, str] = {
+    "healthy": "healthy",
+    "greenmold": "greenmold",
+    "green_mold": "greenmold",
+    "blackmold": "blackmold",
+    "black_mold": "blackmold",
+    "black_bread_mold": "blackmold",
+}
 
 
 def _clean_rak_code(raw_id: str) -> str:
@@ -189,6 +326,8 @@ async def create_scan(payload: CreateScanRequest, user_id: str, background_tasks
         "status_tag": payload.status_tag,
         "scanned_at": payload.scanned_at or datetime.now(timezone.utc).isoformat(),
         "inference_status": inference_status,
+        "ml_label": payload.ml_label or (disease.get("ml_label") if disease else None),
+        "model_version": payload.model_version,
     }
 
     resolved_rak_code = payload.rak_id
@@ -225,6 +364,112 @@ async def create_scan(payload: CreateScanRequest, user_id: str, background_tasks
             background_tasks.add_task(run_inference, str(scan["id"]))
 
     return scan
+
+
+def _validate_image_upload(contents: bytes, filename: str, content_type: str) -> None:
+    if not contents:
+        raise AppException(400, "VALIDATION_ERROR", "File gambar kosong")
+    if len(contents) > _MAX_PREDICT_IMAGE_BYTES:
+        raise AppException(400, "VALIDATION_ERROR", "Ukuran gambar maksimal 10 MB")
+
+    ct = (content_type or "").split(";")[0].strip().lower()
+    ext = Path(filename or "").suffix.lower()
+    is_valid_type = ct in _ALLOWED_IMAGE_TYPES or ct.startswith("image/")
+    is_valid_ext = ct in ("", "application/octet-stream") and ext in _ALLOWED_IMAGE_EXTENSIONS
+    if not (is_valid_type or is_valid_ext):
+        raise AppException(
+            400,
+            "VALIDATION_ERROR",
+            "Format file harus berupa gambar (JPEG/PNG/WebP)",
+        )
+
+
+async def predict_scan_image(
+    contents: bytes,
+    filename: str = "scan.jpg",
+    content_type: str = "",
+) -> dict[str, Any]:
+    """Validate uploaded image, run TFLite prediction, and map to disease SOP."""
+    _validate_image_upload(contents, filename, content_type)
+
+    try:
+        prediction = await predict_image_bytes_async(contents)
+    except UnidentifiedImageError as exc:
+        raise AppException(
+            400, "VALIDATION_ERROR", "File gambar tidak valid atau rusak"
+        ) from exc
+    except RuntimeError as exc:
+        raise AppException(503, "MODEL_UNAVAILABLE", str(exc)) from exc
+
+    disease: dict[str, Any] | None = None
+    db_steps: list[dict[str, Any]] = []
+    try:
+        disease = await diseases_repo.find_by_ml_label(prediction.label)
+        if disease:
+            db_steps = await scan_steps_repo.get_disease_steps(str(disease["id"]))
+    except Exception as exc:
+        logger.warning(
+            "Disease lookup failed for label=%s, using fallback metadata: %s",
+            prediction.label,
+            exc,
+        )
+
+    fallback_key = _FALLBACK_LABEL_ALIASES.get(
+        prediction.label.lower(), prediction.label.lower()
+    )
+    fallback = _FALLBACK_DISEASE_METADATA.get(fallback_key, {})
+    is_healthy = (
+        bool(disease.get("is_healthy"))
+        if disease
+        else bool(fallback.get("is_healthy", False))
+    )
+    severity = (
+        "healthy"
+        if is_healthy
+        else (
+            (disease.get("default_severity") if disease else None)
+            or fallback.get("severity")
+            or "treatable"
+        )
+    )
+
+    raw_steps = db_steps if db_steps else fallback.get("steps", [])
+    steps = [
+        {
+            "step_order": int(step.get("step_order") or idx),
+            "title": str(step.get("title") or ""),
+            "description": str(step.get("description") or ""),
+        }
+        for idx, step in enumerate(raw_steps, start=1)
+    ]
+
+    return {
+        "ml_label": prediction.label,
+        "disease_id": str(disease["id"]) if disease else None,
+        "diagnosis_name": (
+            (disease.get("name") if disease else None)
+            or fallback.get("name")
+            or prediction.label
+        ),
+        "scientific_name": (
+            (disease.get("scientific_name") if disease else None)
+            or fallback.get("scientific_name")
+        ),
+        "description": (
+            (disease.get("description") if disease else None)
+            or fallback.get("description")
+        ),
+        "confidence": prediction.confidence,
+        "probabilities": prediction.probabilities,
+        "severity": severity,
+        "infection_location": (
+            (disease.get("location_hint") if disease else None)
+            or fallback.get("location_hint")
+            or "Permukaan Baglog"
+        ),
+        "model_version": prediction.model_version,
+        "steps": steps,
+    }
 
 
 async def batch_sync_scans(scans: list[CreateScanRequest], user_id: str) -> list[dict]:

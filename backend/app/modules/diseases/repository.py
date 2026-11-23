@@ -5,11 +5,23 @@ from typing import Any
 from app.core.database import fetch_all, fetch_one
 
 
+_ML_LABEL_ALIASES: dict[str, tuple[str, ...]] = {
+    "blackmold": ("blackmold", "black_mold", "black_bread_mold"),
+    "black_mold": ("black_mold", "blackmold", "black_bread_mold"),
+    "black_bread_mold": ("black_bread_mold", "blackmold", "black_mold"),
+    "greenmold": ("greenmold", "green_mold"),
+    "green_mold": ("green_mold", "greenmold"),
+    "healthy": ("healthy",),
+}
+
+
 async def find_by_ml_label(ml_label: str) -> dict[str, Any] | None:
-    """Find a disease by its ML output label."""
+    """Find a disease by its ML output label (with model-class aliases)."""
+    normalized = (ml_label or "").strip().lower()
+    candidates = list(_ML_LABEL_ALIASES.get(normalized, (normalized,)))
     return await fetch_one(
-        "SELECT * FROM diseases WHERE ml_label = %(label)s AND is_active = TRUE",
-        {"label": ml_label},
+        "SELECT * FROM diseases WHERE LOWER(ml_label) = ANY(%(labels)s) AND is_active = TRUE LIMIT 1",
+        {"labels": candidates},
     )
 
 

@@ -243,11 +243,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             _buildFilterChips(countAll, countAction, countDiscard),
             const SizedBox(height: AppSpacing.sectionGap),
 
-            // Empty search state
+            // Empty history or empty search/filter state
             if (actionItems.isEmpty &&
                 recoveredItems.isEmpty &&
                 archivedItems.isEmpty) ...[
-              _buildEmptyState(),
+              _buildEmptyState(
+                hasAnyItems: items.isNotEmpty,
+                syncStatus: syncStatus,
+              ),
               const SizedBox(height: AppSpacing.s4),
             ],
 
@@ -482,7 +485,137 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({
+    required bool hasAnyItems,
+    required HistorySyncStatus syncStatus,
+  }) {
+    if (!hasAnyItems && syncStatus == HistorySyncStatus.loading) {
+      return NeuSurface(
+        variant: NeuVariant.inset,
+        radius: AppRadius.card,
+        padding: const EdgeInsets.all(AppSpacing.s6),
+        child: Center(
+          child: Column(
+            children: [
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.8,
+                  color: AppColors.primary600,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                'Memuat riwayat deteksi...',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!hasAnyItems) {
+      final isUnauth = syncStatus == HistorySyncStatus.unauthenticated;
+      final isOffline = syncStatus == HistorySyncStatus.offline;
+
+      return NeuSurface(
+        variant: NeuVariant.inset,
+        radius: AppRadius.card,
+        padding: const EdgeInsets.all(AppSpacing.s6),
+        child: Center(
+          child: Column(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isUnauth
+                      ? Icons.lock_outline_rounded
+                      : isOffline
+                          ? Icons.cloud_off_rounded
+                          : Icons.history_toggle_off_rounded,
+                  size: 26,
+                  color: AppColors.primary800,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                isUnauth
+                    ? 'Masuk untuk Sinkronisasi Riwayat'
+                    : 'Belum Ada Riwayat Deteksi',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isUnauth
+                    ? 'Masuk ke akun petani untuk memuat riwayat scan dari server, atau mulai pindai baglog baru.'
+                    : isOffline
+                        ? 'Server belum terjangkau dan belum ada data riwayat lokal. Ketuk muat ulang saat koneksi tersedia.'
+                        : 'Riwayat scan kamera dan inspeksi manual yang Anda simpan akan muncul di sini.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.s4),
+              if (isUnauth)
+                ElevatedButton.icon(
+                  onPressed: _openLoginAndSync,
+                  icon: const Icon(Icons.login_rounded, size: 18),
+                  label: const Text('Masuk Akun'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary600,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.button),
+                    ),
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => _syncRemoteHistory(showFeedback: true),
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Muat Ulang Server'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary800,
+                    side: const BorderSide(color: AppColors.primary400),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.button),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return NeuSurface(
       variant: NeuVariant.inset,
       radius: AppRadius.card,

@@ -1,15 +1,14 @@
-import '../../../../mock/mock_data.dart';
 import '../../../scan/data/services/offline_sync_manager.dart';
 import '../../domain/models/history_item.dart';
 
 /// Sumber data lokal untuk layar riwayat.
 ///
-/// Menggabungkan data contoh dengan antrean scan offline yang belum tersinkron,
-/// sehingga hasil scan langsung terlihat di tab Riwayat tanpa menunggu backend.
+/// Membaca antrean scan offline lokal tanpa menyuntikkan data dummy contoh,
+/// sehingga layar menampilkan penanda kosong bila belum ada riwayat nyata.
 class HistoryLocalDataSource {
   List<HistoryItem> getItems() {
-    final items = List<HistoryItem>.from(MockData.historyList);
-    final knownIds = items.map((item) => item.id).toSet();
+    final items = <HistoryItem>[];
+    final knownIds = <String>{};
 
     for (final record in OfflineSyncManager().records) {
       if (knownIds.contains(record.id)) continue;

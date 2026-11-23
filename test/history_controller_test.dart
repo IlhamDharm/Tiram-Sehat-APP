@@ -1,8 +1,11 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tiram_sehat/core/services/scan_api_service.dart';
 import 'package:tiram_sehat/features/history/data/datasources/history_local_datasource.dart';
 import 'package:tiram_sehat/features/history/data/repositories/history_repository.dart';
 import 'package:tiram_sehat/features/history/domain/models/history_item.dart';
+import 'package:tiram_sehat/features/history/history_screen.dart';
 import 'package:tiram_sehat/features/history/presentation/providers/history_provider.dart';
 import 'package:tiram_sehat/features/scan/domain/models/scan_result.dart';
 
@@ -37,6 +40,10 @@ void main() {
     });
 
     tearDown(() => controller.dispose());
+
+    test('riwayat awal kosong dan tidak memuat data dummy', () {
+      expect(controller.state, isEmpty);
+    });
 
     test('hasil scan langsung masuk riwayat dan tidak duplikat', () {
       final before = controller.state.length;
@@ -164,6 +171,33 @@ void main() {
       expect(item.category, HistorySectionCategory.recovered);
       expect(item.rack, 'Rak Kumbung A-01');
       expect(item.confidenceScore, isNull);
+    });
+  });
+
+  group('HistoryScreen empty state', () {
+    testWidgets(
+        'menampilkan penanda kosong tanpa data dummy saat belum ada riwayat',
+        (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: HistoryScreen(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tidak boleh ada data contoh dari MockData.historyList
+      expect(find.textContaining('Black Bread Mold'), findsNothing);
+      expect(find.textContaining('Bacterial Brown Blotch'), findsNothing);
+      expect(find.textContaining('Cobweb Mold'), findsNothing);
+      expect(find.textContaining('Bacterial Wet Spot'), findsNothing);
+
+      // Harus tampil penanda kosong / belum sinkronisasi + tombol aksi
+      expect(find.text('Semua Temuan (0)'), findsOneWidget);
+      expect(find.text('Masuk untuk Sinkronisasi Riwayat'), findsOneWidget);
     });
   });
 }

@@ -23,6 +23,10 @@ class ScanResult {
   final int column;
   final String scannedAt;
   final String? imageUrl;
+  final String? mlLabel;
+  final String? modelVersion;
+  final Map<String, double> probabilities;
+  final String? description;
 
   const ScanResult({
     required this.id,
@@ -36,12 +40,20 @@ class ScanResult {
     required this.column,
     required this.scannedAt,
     this.imageUrl,
+    this.mlLabel,
+    this.modelVersion,
+    this.probabilities = const {},
+    this.description,
   });
 
   ScanResult copyWith({
     String? rack,
     int? column,
     String? imageUrl,
+    String? mlLabel,
+    String? modelVersion,
+    Map<String, double>? probabilities,
+    String? description,
   }) {
     return ScanResult(
       id: id,
@@ -55,6 +67,10 @@ class ScanResult {
       column: column ?? this.column,
       scannedAt: scannedAt,
       imageUrl: imageUrl ?? this.imageUrl,
+      mlLabel: mlLabel ?? this.mlLabel,
+      modelVersion: modelVersion ?? this.modelVersion,
+      probabilities: probabilities ?? this.probabilities,
+      description: description ?? this.description,
     );
   }
 }

@@ -15,6 +15,116 @@ class ScanApiService {
 
   static String get defaultBaseUrl => kBackendBaseUrl;
 
+  static MediaType _detectImageMediaType(Uint8List bytes, String filename) {
+    final lower = filename.toLowerCase();
+    final isPng = bytes.length >= 4 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47;
+    if (isPng || lower.endsWith('.png')) {
+      return MediaType('image', 'png');
+    }
+    if (lower.endsWith('.webp')) {
+      return MediaType('image', 'webp');
+    }
+    return MediaType('image', 'jpeg');
+  }
+
+  /// Mengirim foto ke backend `POST /api/v1/scans/predict` untuk klasifikasi
+  /// langsung dengan model TFLite tanpa menyimpan ke database terlebih dahulu.
+  Future<ScanResult> predictImage({
+    required Uint8List bytes,
+    required ApiClient api,
+    String filename = 'scan.jpg',
+    String rack = 'Rak Kumbung',
+    int column = 0,
+  }) async {
+    try {
+      await api.get('/health');
+    } catch (_) {
+      // Tetap lanjut menggunakan activeBaseUrl / baseUrl.
+    }
+
+    final uri = Uri.parse('${api.activeBaseUrl}/api/v1/scans/predict');
+    final request = http.MultipartRequest('POST', uri);
+    if (api.hasToken && api.accessToken != null) {
+      request.headers['Authorization'] = 'Bearer ${api.accessToken}';
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: _detectImageMediaType(bytes, filename),
+      ),
+    );
+
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    final response = await http.Response.fromStream(streamed);
+
+    Map<String, dynamic> decoded = const {};
+    try {
+      final raw = jsonDecode(response.body);
+      if (raw is Map<String, dynamic>) decoded = raw;
+    } catch (_) {}
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errObj = decoded['error'];
+      final errMsg = errObj is Map
+          ? errObj['message']?.toString()
+          : decoded['detail']?.toString();
+      throw Exception(
+        errMsg ?? 'Gagal menganalisis gambar (HTTP ${response.statusCode})',
+      );
+    }
+
+    final data = decoded['data'] as Map<String, dynamic>? ?? decoded;
+    final parsedSteps = _parseSteps(data['steps'], withDefaultFallback: true);
+    final rawConf = data['confidence'] ?? data['confidence_score'];
+    final double confPercent = _normalizeConfidencePercent(rawConf);
+
+    final severityStr = (data['severity']?.toString() ?? '').toLowerCase();
+    final severity = severityStr == 'healthy'
+        ? ScanSeverity.healthy
+        : severityStr == 'must_discard'
+            ? ScanSeverity.mustDiscard
+            : ScanSeverity.treatable;
+
+    final rawProbs = data['probabilities'];
+    final Map<String, double> probabilities = {};
+    if (rawProbs is Map) {
+      for (final entry in rawProbs.entries) {
+        final v = entry.value;
+        if (v is num) {
+          probabilities[entry.key.toString()] = v.toDouble().clamp(0.0, 1.0);
+        }
+      }
+    }
+
+    final now = DateTime.now();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+
+    return ScanResult(
+      id: 'scan_${now.millisecondsSinceEpoch}',
+      diagnosisName: data['diagnosis_name']?.toString() ?? 'Baglog Terdeteksi',
+      scientificName: data['scientific_name']?.toString() ?? '',
+      confidence: (confPercent / 100.0).clamp(0.0, 1.0),
+      infectionLocation:
+          data['infection_location']?.toString() ?? 'Permukaan Baglog',
+      severity: severity,
+      steps: parsedSteps,
+      rack: _formatRackLabel(rack),
+      column: column,
+      scannedAt: 'Hari ini, $hour:$minute',
+      mlLabel: data['ml_label']?.toString(),
+      modelVersion: data['model_version']?.toString(),
+      probabilities: probabilities,
+      description: data['description']?.toString(),
+    );
+  }
+
   /// Mengunggah gambar baglog ke Cloudinary via `/api/v1/uploads/image`
   /// lalu menyimpan metadata scan ke Neon DB via `POST /api/v1/scans`.
   Future<ScanResult> uploadScan({
@@ -32,6 +142,8 @@ class ScanApiService {
     String? statusTag,
     String scanMethod = 'camera',
     List<ScanStep> steps = const [],
+    String? mlLabel,
+    String? modelVersion,
   }) async {
     if (api == null || !api.hasToken) {
       throw Exception('Sesi login belum aktif untuk upload ke server.');
@@ -53,7 +165,7 @@ class ScanApiService {
         'file',
         bytes,
         filename: filename,
-        contentType: MediaType('image', 'jpeg'),
+        contentType: _detectImageMediaType(bytes, filename),
       ),
     );
 
@@ -88,6 +200,9 @@ class ScanApiService {
       'image_public_id': media['image_public_id'],
       'image_version': media['image_version'],
       'image_thumbnail_url': media['image_thumbnail_url'],
+      if (mlLabel != null && mlLabel.isNotEmpty) 'ml_label': mlLabel,
+      if (modelVersion != null && modelVersion.isNotEmpty)
+        'model_version': modelVersion,
       if (notes != null && notes.isNotEmpty) 'status_note': notes,
       if (statusTag != null && statusTag.isNotEmpty) 'status_tag': statusTag,
       if (steps.isNotEmpty)

@@ -11,7 +11,6 @@ import '../../core/network/api_providers.dart';
 import '../../core/services/scan_api_service.dart';
 import '../history/presentation/providers/history_provider.dart';
 import 'data/services/offline_sync_manager.dart';
-import 'data/services/on_device_classifier_service.dart';
 import 'domain/models/scan_result.dart';
 import 'widgets/app_camera_preview.dart';
 import 'widgets/scan_viewfinder_screen.dart';
@@ -261,15 +260,26 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   }
 
   Future<void> _analyzeBytes(Uint8List? bytes) async {
+    if (bytes == null || bytes.isEmpty) {
+      setState(() {
+        _scanResult = null;
+        _scanError = 'Gambar tidak ditemukan. Silakan ambil foto ulang.';
+        _phase = ScanPhase.result;
+      });
+      return;
+    }
+
     setState(() {
       _phase = ScanPhase.analyzing;
       _scanError = null;
     });
 
     try {
-      // Klasifikasi on-device (offline). Rak & kolom diisi pengguna setelah ini.
-      final result = await OnDeviceClassifierService.classify(
-        imageBytes: bytes,
+      final api = ref.read(apiClientProvider);
+      final result = await ScanApiService.instance.predictImage(
+        bytes: bytes,
+        api: api,
+        filename: 'scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
         rack: 'Rak Kumbung',
         column: 0,
       );
@@ -279,10 +289,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
         _phase = ScanPhase.result;
       });
     } catch (e) {
-      debugPrint('On-device inference error: $e');
+      debugPrint('Backend TFLite inference error: $e');
       if (!mounted) return;
       setState(() {
-        _scanError = 'Klasifikasi gagal dijalankan. Silakan coba lagi.';
+        _scanResult = null;
+        _scanError =
+            'Gagal menganalisis gambar di server AI. Pastikan koneksi internet aktif dan server berjalan.';
         _phase = ScanPhase.result;
       });
     }
@@ -331,6 +343,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       column: column,
       scannedAt: activeResult.scannedAt,
       imageUrl: activeResult.imageUrl,
+      mlLabel: activeResult.mlLabel,
+      modelVersion: activeResult.modelVersion,
+      probabilities: activeResult.probabilities,
+      description: activeResult.description,
     );
 
     final api = ref.read(apiClientProvider);
@@ -355,6 +371,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
           infectionLocation: activeResult.infectionLocation,
           severity: severityStr,
           steps: activeResult.steps,
+          mlLabel: activeResult.mlLabel,
+          modelVersion: activeResult.modelVersion,
         );
         finalResult = uploaded;
         uploadedToServer = true;
@@ -388,7 +406,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
                 child: Text(
                   isCloudSaved
                       ? 'Hasil scan disimpan ke Neon DB & Cloudinary (img_jamur)'
-                      : 'Backend offline (port 8000). Hasil scan tersimpan di riwayat lokal',
+                      : 'Gagal terhubung ke server. Hasil scan tersimpan di riwayat lokal',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -413,6 +431,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    final isCameraReady = _controller != null &&
+        _controller!.value.isInitialized &&
+        !_isInitializing &&
+        _cameraError == null;
+
     final cameraPreviewWidget = AppCameraPreview(
       controller: _controller,
       isInitialized: _controller != null && _controller!.value.isInitialized,
@@ -434,6 +457,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
           macroOn: _macroOn,
           onToggleMacro: _toggleMacro,
           cameraPreview: cameraPreviewWidget,
+          showReticle: isCameraReady,
         );
       case ScanPhase.analyzing:
         return _AnalyzingOverlay(cameraPreview: cameraPreviewWidget);
@@ -448,6 +472,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
         }
         return _ResultView(
           result: activeResult,
+          capturedBytes: _capturedBytes,
           cameraPreview: cameraPreviewWidget,
           flashOn: _flashOn,
           onToggleFlash: _toggleFlash,
@@ -560,6 +585,7 @@ class _AnalyzingOverlay extends StatelessWidget {
 
 class _ResultView extends StatelessWidget {
   final ScanResult result;
+  final Uint8List? capturedBytes;
   final Widget cameraPreview;
   final bool flashOn;
   final VoidCallback onToggleFlash;
@@ -569,6 +595,7 @@ class _ResultView extends StatelessWidget {
 
   const _ResultView({
     required this.result,
+    this.capturedBytes,
     required this.cameraPreview,
     required this.flashOn,
     required this.onToggleFlash,
@@ -598,8 +625,10 @@ class _ResultView extends StatelessWidget {
           ),
         ),
         AppBottomSheet(
-          builder: (context, snap) => ScanResultSheetContent(
+          builder: (context, snap, scrollController) => ScanResultSheetContent(
             result: result,
+            capturedBytes: capturedBytes,
+            scrollController: scrollController,
             onSaveToHistory: onSaveToHistory,
             onScanAgain: onScanAgain,
           ),
@@ -687,29 +716,46 @@ class _DetectionBox extends StatelessWidget {
 
   const _DetectionBox({required this.result});
 
+  Color get _badgeColor => switch (result.severity) {
+        ScanSeverity.healthy => AppColors.primary600,
+        ScanSeverity.mustDiscard => AppColors.danger600,
+        ScanSeverity.treatable => AppColors.warning500,
+      };
+
+  String get _badgePrefix => switch (result.severity) {
+        ScanSeverity.healthy => '✓',
+        ScanSeverity.mustDiscard => '⚠',
+        ScanSeverity.treatable => '⚠',
+      };
+
   @override
   Widget build(BuildContext context) {
+    final displayTitle = result.scientificName.isNotEmpty
+        ? result.scientificName
+        : result.diagnosisName;
+    final badgeColor = _badgeColor;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(
+          SizedBox(
             width: 240,
             height: 190,
             child: CustomPaint(
-              size: Size(240, 190),
-              painter: _DetectionCornerPainter(),
+              size: const Size(240, 190),
+              painter: _DetectionCornerPainter(color: badgeColor),
             ),
           ),
           const SizedBox(height: AppSpacing.s2),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.warning500,
+              color: badgeColor,
               borderRadius: BorderRadius.circular(AppRadius.pill),
             ),
             child: Text(
-              '⚠ ${result.scientificName} ${FormatHelper.persen(result.confidence * 100)}',
+              '$_badgePrefix $displayTitle ${FormatHelper.persen(result.confidence * 100)}',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -724,13 +770,15 @@ class _DetectionBox extends StatelessWidget {
 }
 
 class _DetectionCornerPainter extends CustomPainter {
-  const _DetectionCornerPainter();
+  final Color color;
+
+  const _DetectionCornerPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
     const cornerLen = 34.0;
     final paint = Paint()
-      ..color = AppColors.warning500
+      ..color = color
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;

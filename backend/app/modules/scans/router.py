@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, Response, UploadFile
 
-from app.core.deps import get_current_user_id
+from app.core.deps import get_current_user_id, get_optional_user_id
 from app.core.exceptions import success_response
 from app.modules.scans import service
 from app.modules.scans.schemas import (
@@ -42,6 +42,21 @@ async def batch_sync(
         {"synced_count": len(results), "items": results},
         status_code=201,
     )
+
+
+@router.post("/predict")
+async def predict_scan(
+    file: UploadFile = File(...),
+    _user_id: str | None = Depends(get_optional_user_id),
+):
+    """Run TFLite disease classification directly on an uploaded image."""
+    contents = await file.read()
+    result = await service.predict_scan_image(
+        contents=contents,
+        filename=file.filename or "scan.jpg",
+        content_type=file.content_type or "",
+    )
+    return success_response(result)
 
 
 @router.get("/{scan_id}")

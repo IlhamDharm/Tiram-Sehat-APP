@@ -26,6 +26,7 @@ class CreateScanRequest(BaseModel):
     diagnosis_name: str | None = None
     scientific_name: str | None = None
     ml_label: str | None = None
+    model_version: str | None = None
     client_id: str | None = None
     confidence: float | None = Field(None, ge=0, le=100)
     severity: str = "treatable"
@@ -57,6 +58,20 @@ class CreateActionRequest(BaseModel):
     to_status: str | None = None
     note: str | None = None
     tag: str | None = None
+
+
+class PredictScanOut(BaseModel):
+    ml_label: str
+    disease_id: str | None = None
+    diagnosis_name: str
+    scientific_name: str | None = None
+    description: str | None = None
+    confidence: float
+    probabilities: dict[str, float] = {}
+    severity: str
+    infection_location: str | None = None
+    model_version: str
+    steps: list[ScanStepOut] = []
 
 
 class ScanOut(BaseModel):

@@ -12,6 +12,7 @@ class ScanViewfinderScreen extends StatelessWidget {
   final bool macroOn;
   final VoidCallback onToggleMacro;
   final Widget cameraPreview;
+  final bool showReticle;
 
   const ScanViewfinderScreen({
     super.key,
@@ -23,6 +24,7 @@ class ScanViewfinderScreen extends StatelessWidget {
     this.macroOn = false,
     required this.onToggleMacro,
     required this.cameraPreview,
+    this.showReticle = true,
   });
 
   @override
@@ -46,10 +48,12 @@ class ScanViewfinderScreen extends StatelessWidget {
                     onToggleFlash: onToggleFlash,
                   ),
                   const Spacer(),
-                  ScanReticle(size: reticleSize),
-                  const SizedBox(height: AppSpacing.s3),
-                  const _FrameLabel(),
-                  const Spacer(),
+                  if (showReticle) ...[
+                    ScanReticle(size: reticleSize),
+                    const SizedBox(height: AppSpacing.s3),
+                    const _FrameLabel(),
+                    const Spacer(),
+                  ],
                   const _TipsCard(),
                   _BottomBar(
                     onShutter: onShutter,

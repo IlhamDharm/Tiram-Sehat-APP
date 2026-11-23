@@ -1,4 +1,4 @@
-"""Async HTTP client for the Hugging Face Space ML inference endpoint."""
+"""ML inference client — prefers local TFLite model, falls back to HF Space."""
 from __future__ import annotations
 
 import logging
@@ -7,20 +7,46 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.tflite_model import (
+    PredictionResult,
+    predict_image_bytes_async,
+    resolve_model_path,
+)
 
 logger = logging.getLogger(__name__)
 
 
-async def predict_from_url(image_url: str) -> dict[str, Any]:
-    """Call the HF Space ``/predict`` endpoint with an image URL.
+async def predict_from_url(image_url: str) -> PredictionResult:
+    """Predict disease label from ``image_url`` using local TFLite or HF Space."""
+    if resolve_model_path().exists():
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(settings.HF_TIMEOUT_SECONDS),
+                follow_redirects=True,
+            ) as client:
+                resp = await client.get(image_url)
+                resp.raise_for_status()
+            return await predict_image_bytes_async(resp.content)
+        except Exception as exc:
+            if not settings.HF_SPACE_URL:
+                raise RuntimeError(
+                    f"Local TFLite inference failed for image URL: {exc}"
+                ) from exc
+            logger.warning(
+                "Local TFLite URL inference failed (%s), falling back to HF Space",
+                exc,
+            )
 
-    Returns the parsed JSON body on success.  Retries up to
-    ``settings.HF_MAX_RETRIES`` times on transient failures.
-    """
+    if not settings.HF_SPACE_URL:
+        raise RuntimeError(
+            "Local TFLite model not found and HF_SPACE_URL is not configured"
+        )
+
     payload = {"image_url": image_url}
     headers: dict[str, str] = {}
     if settings.HF_INTERNAL_SECRET:
         headers["Authorization"] = f"Bearer {settings.HF_INTERNAL_SECRET}"
+        headers["X-Internal-Secret"] = settings.HF_INTERNAL_SECRET
 
     last_exc: Exception | None = None
 
@@ -36,7 +62,16 @@ async def predict_from_url(image_url: str) -> dict[str, Any]:
                 )
                 resp.raise_for_status()
                 data: dict[str, Any] = resp.json()
-                return data
+                label = str(data.get("label") or "greenmold")
+                confidence = max(0.0, min(1.0, float(data.get("confidence") or 0.0)))
+                return PredictionResult(
+                    label=label,
+                    confidence=confidence,
+                    probabilities=data.get("probabilities") or {label: confidence},
+                    model_version=str(
+                        data.get("model_version") or settings.ML_MODEL_VERSION
+                    ),
+                )
         except (httpx.HTTPStatusError, httpx.TransportError) as exc:
             last_exc = exc
             logger.warning(

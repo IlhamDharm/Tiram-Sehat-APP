@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     HF_TIMEOUT_SECONDS: int = 60
     HF_MAX_RETRIES: int = 3
 
+    # ── Local TFLite Model ───────────────────────────
+    ML_MODEL_PATH: str = ""
+    ML_MODEL_VERSION: str = "mobilenetv2-end2end-v7"
+
     # ── CORS ─────────────────────────────────────────
     CORS_ORIGINS: str = "*"
 

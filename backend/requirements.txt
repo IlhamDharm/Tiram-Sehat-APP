@@ -17,6 +17,11 @@ bcrypt==4.2.1
 # HTTP client (ML inference)
 httpx==0.28.1
 
+# ML Inference (TFLite)
+ai-edge-litert>=2.0.0
+numpy>=2.0.0
+Pillow>=10.0.0
+
 # Cloudinary
 cloudinary==1.41.0
 
